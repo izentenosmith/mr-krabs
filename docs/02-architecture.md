@@ -54,6 +54,8 @@ flowchart TB
 
 ## Repository layout
 
+Target layout. Not there yet (planned for M1+): `src-tauri/src/commands/` and `adapters/` (M0 has everything in `lib.rs`), `tools/gen-bindings.sh` and the tauri-specta bindings (`api-client` types are hand-written until then).
+
 ```text
 mr-krabs/
 ├── Cargo.toml                    # Rust workspace
@@ -76,8 +78,10 @@ mr-krabs/
 │       └── src/                  # React app (Vite + TS + Tailwind + shadcn/ui)
 │           ├── components/ui/    # shadcn generated components
 │           ├── features/         # accounts/, transactions/, budgets/, reports/, import/, sync/, settings/
-│           ├── routes/
-│           └── lib/              # formatting helpers (display only), hooks
+│           ├── routes/           # TanStack Router route components (router.tsx: hash history)
+│           ├── i18n/             # react-i18next resources: es-CL (default), en
+│           └── lib/              # class-name helpers, hooks (no money formatting)
+├── design-system/mr-krabs/       # UI design system: MASTER.md + pages/<page>.md overrides
 ├── packages/
 │   └── api-client/               # Generated bindings (tauri-specta) + typed wrappers
 ├── docker/                       # back.Dockerfile, front.Dockerfile (dev images)
@@ -120,7 +124,7 @@ flowchart LR
 
 | Boundary | Mechanism |
 |---|---|
-| No floats in money | `clippy.toml`: `disallowed-types = ["f32", "f64"]` in `mrk-money`, `mrk-domain`; `#![deny(clippy::float_arithmetic)]`. |
+| No floats in money | Workspace-wide: root `clippy.toml` `disallowed-types = ["f32", "f64"]` plus `[workspace.lints.clippy]` `disallowed_types` and `float_arithmetic` = `deny`; CI runs clippy with `-D warnings`. |
 | No SQL logic | `tools/check-no-sql-logic.sh` greps migrations + `.rs` SQL strings for `TRIGGER`, `CREATE VIEW`, `PROCEDURE`, `create_function`. CI fails on hit. |
 | Tauri stays thin | Shell depends only on `mr-krabs-core`; review rule: commands contain no `rusqlite`, no arithmetic. |
 | React stays presentational | ESLint `no-restricted-imports` for `@tauri-apps/*` outside `packages/api-client`; money values arrive as `MoneyDto` with a pre-formatted string; no arithmetic helpers exported for money. |
@@ -185,10 +189,11 @@ Data location: `~/Library/Application Support/cl.mrkrabs.app/` (`mrkrabs.sqlite`
 
 | Concern | Approach |
 |---|---|
-| Errors | `thiserror` in core → `ApiError { code, message, details }` (serializable, stable `code` enum). UI maps `code` to i18n text. |
-| Logging | `tracing` to rotating local file; never logs amounts/descriptions at `info`; no remote sink. |
+| Errors | `thiserror` in core → `ApiError { code, message }` (serializable, stable `code` enum; per-field `fields` added with the first forms, see [04](04-command-boundary.md#errors)). UI maps `code` to i18n text. |
+| Logging | `tracing` + `tracing-appender`: daily-rotated local file in the app log dir, 14 files kept; never logs amounts/descriptions at `info`; no remote sink. |
 | Migrations | Forward-only numbered SQL files embedded in `mrk-store`, run at startup inside a transaction; schema version in `PRAGMA user_version`. Sync refuses peers with incompatible schema. |
 | Time | Dates of transactions are civil `NaiveDate` (no TZ); audit timestamps are HLC (UTC ms + counter). |
 | IDs | UUIDv7 everywhere (time-ordered, globally unique, good B-tree locality). |
-| i18n | `es-CL` default, `en`. Number formatting performed in Rust (`MoneyDto.display`) to guarantee consistency; UI may use `Intl` for non-money numbers. |
-| Testing | Unit + property tests (proptest) in domain; repository tests on in-memory SQLite; importer golden files; sync simulation tests (two in-process peers with random offline edits); Playwright/Tauri driver smoke tests. |
+| i18n | `es-CL` default, `en`. UI strings live in typed `react-i18next` resources (`apps/desktop/src/i18n/`). Number formatting performed in Rust (`MoneyDto.display`) to guarantee consistency; UI may use `Intl` for non-money numbers. |
+| UI design | [Design system](../design-system/mr-krabs/MASTER.md): semantic tokens in `apps/desktop/src/index.css`, light/dark via macOS appearance, system fonts only (offline), color never the sole signal. |
+| Testing | Unit + property tests (proptest) in money/domain; `insta` snapshots for wire contracts; repository tests on in-memory SQLite; importer golden files; sync simulation tests (two in-process peers with random offline edits); Playwright/Tauri driver smoke tests. |

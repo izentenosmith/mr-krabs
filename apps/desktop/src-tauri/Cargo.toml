@@ -20,3 +20,6 @@ mr-krabs-core.workspace = true
 tauri = { version = "2", features = [] }
 serde.workspace = true
 serde_json.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tracing-appender.workspace = true

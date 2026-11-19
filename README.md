@@ -19,7 +19,7 @@ Mr Krabs tracks **personal** and **household** finances for a two-person househo
 
 ## Status
 
-🏗️ **M0 — foundation.** Workspace, Docker dev environment, CI and first tested core crates are in place. Next: the [M1 vertical slice](docs/07-roadmap.md).
+🏗️ **M0 — foundation ✅.** Workspace, Docker dev environment, CI, first tested core crates and the [UI design system](design-system/mr-krabs/MASTER.md) are in place, along with the libraries M1 builds on. Next: the [M1 vertical slice](docs/07-roadmap.md).
 
 ## Quick start (Docker)
 

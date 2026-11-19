@@ -21,3 +21,14 @@ describe("MoneyPreview", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("invalid amount");
   });
 });
+
+describe("MoneyPreview form", () => {
+  it("requires an amount before calling the backend", async () => {
+    const onParse = vi.fn();
+    render(<MoneyPreview onParse={onParse} />);
+    fireEvent.change(screen.getByLabelText("Monto"), { target: { value: "  " } });
+    fireEvent.click(screen.getByRole("button", { name: "Interpretar" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Ingresa un monto");
+    expect(onParse).not.toHaveBeenCalled();
+  });
+});

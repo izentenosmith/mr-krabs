@@ -41,6 +41,7 @@ fn to_value<T: Serialize>(v: T) -> Result<Value, ApiError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use pretty_assertions::assert_eq;
     use serde_json::json;
 
     #[test]
@@ -60,10 +61,14 @@ mod tests {
             json!({ "input": { "amount": "27.990", "currency": "CLP" } }),
         )
         .unwrap();
-        assert_eq!(
-            v,
-            json!({ "minor": "27990", "currency": "CLP", "display": "$27.990" })
-        );
+        // Wire contract with @mr-krabs/api-client: camelCase, minor units as a string.
+        insta::assert_json_snapshot!(v, @r#"
+        {
+          "currency": "CLP",
+          "display": "$27.990",
+          "minor": "27990"
+        }
+        "#);
     }
 
     #[test]

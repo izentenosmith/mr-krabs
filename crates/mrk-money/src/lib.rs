@@ -7,39 +7,24 @@
 use std::fmt;
 
 /// Errors produced by money operations.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum MoneyError {
+    #[error("invalid currency code: {0:?}")]
     InvalidCurrencyCode(String),
+    #[error("currency mismatch: {left} vs {right}")]
     CurrencyMismatch {
         left: CurrencyCode,
         right: CurrencyCode,
     },
+    #[error("amount overflow")]
     Overflow,
+    #[error("allocation needs at least one positive weight")]
     EmptyAllocation,
+    #[error("invalid amount: {0:?}")]
     InvalidAmount(String),
-    TooManyDecimals {
-        allowed: u8,
-    },
+    #[error("too many decimals (currency allows {allowed})")]
+    TooManyDecimals { allowed: u8 },
 }
-
-impl fmt::Display for MoneyError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::InvalidCurrencyCode(c) => write!(f, "invalid currency code: {c:?}"),
-            Self::CurrencyMismatch { left, right } => {
-                write!(f, "currency mismatch: {left} vs {right}")
-            }
-            Self::Overflow => write!(f, "amount overflow"),
-            Self::EmptyAllocation => write!(f, "allocation needs at least one positive weight"),
-            Self::InvalidAmount(s) => write!(f, "invalid amount: {s:?}"),
-            Self::TooManyDecimals { allowed } => {
-                write!(f, "too many decimals (currency allows {allowed})")
-            }
-        }
-    }
-}
-
-impl std::error::Error for MoneyError {}
 
 /// ISO-4217-like currency code (3–8 uppercase ASCII letters), stored inline (`Copy`).
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -445,5 +430,45 @@ mod tests {
             Money::new(1_999, Currency::USD.code).display_es_cl(),
             "US$19,99"
         );
+    }
+}
+
+#[cfg(test)]
+mod properties {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        /// Shared expenses and installments must never create or lose a peso.
+        #[test]
+        fn allocate_preserves_total(
+            minor in -1_000_000_000_000i64..1_000_000_000_000,
+            weights in prop::collection::vec(0u64..1_000, 1..8),
+        ) {
+            prop_assume!(weights.iter().any(|&w| w > 0));
+            let parts = Money::new(minor, Currency::CLP.code).allocate(&weights).unwrap();
+            prop_assert_eq!(parts.len(), weights.len());
+            prop_assert_eq!(parts.iter().map(|m| m.minor).sum::<i64>(), minor);
+            prop_assert!(parts.iter().all(|m| m.minor == 0 || (m.minor < 0) == (minor < 0)));
+        }
+
+        /// Even splits differ by at most one minor unit.
+        #[test]
+        fn split_evenly_is_fair(minor in -1_000_000_000i64..1_000_000_000, n in 1usize..12) {
+            let parts = Money::new(minor, Currency::CLP.code).split_evenly(n).unwrap();
+            let max = parts.iter().map(|m| m.minor).max().unwrap();
+            let min = parts.iter().map(|m| m.minor).min().unwrap();
+            prop_assert!(max - min <= 1);
+        }
+
+        /// Whatever Rust displays, Rust can read back exactly.
+        #[test]
+        fn format_then_parse_round_trips(
+            minor in -1_000_000_000_000_000i64..1_000_000_000_000_000,
+            units in prop::sample::select(vec![0u8, 2, 4]),
+        ) {
+            let s = format_es_cl(minor, units, "$");
+            prop_assert_eq!(parse_es_cl(&s, units), Ok(minor), "{}", s);
+        }
     }
 }
