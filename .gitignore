@@ -1,0 +1,33 @@
+# Build outputs
+/target/
+**/target/
+node_modules/
+dist/
+apps/desktop/src-tauri/gen/
+
+# Local data — NEVER commit real financial data
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+*.mrkbackup
+# Real statements/spreadsheets: only synthetic fixtures are allowed
+*.pdf
+*.xlsx
+*.xls
+*.csv
+!**/fixtures/synthetic/**
+
+# Secrets — never in this public repo
+.env
+.env.*
+*.pem
+*.key
+*.p12
+secrets/
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
