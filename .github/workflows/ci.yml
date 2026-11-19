@@ -60,9 +60,9 @@ jobs:
       - name: Format
         run: cargo fmt --all --check
       - name: Clippy (floats banned in money code)
-        run: cargo clippy --workspace --exclude mr-krabs-desktop --all-targets -- -D warnings
+        run: cargo clippy --locked --workspace --exclude mr-krabs-desktop --all-targets -- -D warnings
       - name: Unit tests
-        run: cargo test --workspace --exclude mr-krabs-desktop
+        run: cargo test --locked --workspace --exclude mr-krabs-desktop
 
   frontend:
     runs-on: ubuntu-latest
@@ -73,7 +73,7 @@ jobs:
         with:
           node-version: 22
       - name: Install
-        run: pnpm install --no-frozen-lockfile
+        run: pnpm install --frozen-lockfile
       - name: Lint (UI may not import @tauri-apps)
         run: pnpm lint
       - name: Typecheck
@@ -95,9 +95,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Build UI
-        run: pnpm install --no-frozen-lockfile && pnpm build
+        run: pnpm install --frozen-lockfile && pnpm build
       - name: Check Tauri shell
-        run: cargo check -p mr-krabs-desktop
+        run: cargo check --locked -p mr-krabs-desktop
 
   docker:
     runs-on: ubuntu-latest
