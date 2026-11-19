@@ -1,0 +1,109 @@
+name: ci
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Required for PRs into main: only `dev` may be merged into `main`.
+  branch-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Only dev -> main
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.base_ref }}
+          HEAD: ${{ github.head_ref }}
+        run: |
+          if [ "$EVENT" = "pull_request" ] && [ "$BASE" = "main" ] && [ "$HEAD" != "dev" ]; then
+            echo "::error::Pull requests into main must come from dev (got '$HEAD'). Open your PR against dev."
+            exit 1
+          fi
+          echo "Branch policy OK ($EVENT: ${HEAD:-push} -> ${BASE:-$GITHUB_REF_NAME})"
+
+  guardrails:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: No SQL logic (ADR-0002)
+        run: ./tools/check-no-sql-logic.sh
+      - name: Schema applies cleanly
+        run: |
+          for f in crates/mrk-store/migrations/*.sql; do sqlite3 :memory: < "$f"; done
+      - name: Secret scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Clippy (floats banned in money code)
+        run: cargo clippy --workspace --exclude mr-krabs-desktop --all-targets -- -D warnings
+      - name: Unit tests
+        run: cargo test --workspace --exclude mr-krabs-desktop
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install
+        run: pnpm install --no-frozen-lockfile
+      - name: Lint (UI may not import @tauri-apps)
+        run: pnpm lint
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Unit tests
+        run: pnpm test
+      - name: Build
+        run: pnpm build
+
+  desktop:
+    # Compiles the Tauri shell on macOS (the target platform).
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build UI
+        run: pnpm install --no-frozen-lockfile && pnpm build
+      - name: Check Tauri shell
+        run: cargo check -p mr-krabs-desktop
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compose file is valid
+        run: docker compose config -q && docker compose --profile test config -q
+      - name: Dev images build
+        run: docker compose build back front

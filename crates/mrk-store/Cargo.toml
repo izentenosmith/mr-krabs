@@ -1,0 +1,15 @@
+[package]
+name = "mrk-store"
+description = "SQLite storage for Mr Krabs: migrations and repositories (no SQL logic)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+rusqlite.workspace = true
+
+[lints]
+workspace = true

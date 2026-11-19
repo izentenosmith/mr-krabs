@@ -1,0 +1,94 @@
+# Mr Krabs — local development environment.
+#
+#   docker compose up --build        # back + front + db
+#   open http://localhost:5173       # React UI (talks to the devserver over HTTP)
+#   open http://localhost:8081       # DB browser (read-only)
+#
+#   docker compose --profile test run --rm test-back    # Rust unit tests
+#   docker compose --profile test run --rm test-front   # Frontend unit tests
+#
+# The production app is the Tauri desktop shell; this environment runs the same core
+# behind a dev-only HTTP shell (apps/devserver). See docs/08-development.md.
+
+name: mr-krabs
+
+x-rust: &rust
+  build:
+    context: .
+    dockerfile: docker/back.Dockerfile
+  volumes:
+    - .:/workspace
+    - cargo-registry:/usr/local/cargo/registry
+    - cargo-git:/usr/local/cargo/git
+    - cargo-target:/cargo-target
+    - mrk-data:/data
+
+x-node: &node
+  build:
+    context: .
+    dockerfile: docker/front.Dockerfile
+  volumes:
+    - .:/workspace
+    - pnpm-store:/workspace/.pnpm-store
+    - node-modules-root:/workspace/node_modules
+    - node-modules-desktop:/workspace/apps/desktop/node_modules
+    - node-modules-api:/workspace/packages/api-client/node_modules
+  environment:
+    npm_config_store_dir: /workspace/.pnpm-store
+
+services:
+  back:
+    <<: *rust
+    ports:
+      - "7878:7878"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:7878/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      # First run compiles the workspace; give it time.
+      start_period: 15m
+
+  front:
+    <<: *node
+    environment:
+      npm_config_store_dir: /workspace/.pnpm-store
+      VITE_PROXY_TARGET: http://back:7878
+      VITE_POLLING: "true"
+    ports:
+      - "5173:5173"
+    depends_on:
+      - back
+
+  db:
+    # SQLite is an embedded file, not a server: this service shares the data volume and
+    # gives a read-only browser over it for debugging.
+    image: coleifer/sqlite-web:latest
+    command: ["sqlite_web", "--host", "0.0.0.0", "--port", "8080", "--no-browser", "--read-only", "/data/mrkrabs.sqlite"]
+    volumes:
+      - mrk-data:/data
+    ports:
+      - "8081:8080"
+    depends_on:
+      back:
+        condition: service_healthy
+
+  test-back:
+    <<: *rust
+    profiles: ["test"]
+    command: ["cargo", "test", "--workspace", "--exclude", "mr-krabs-desktop"]
+
+  test-front:
+    <<: *node
+    profiles: ["test"]
+    command: ["sh", "-c", "pnpm install && pnpm lint && pnpm typecheck && pnpm test"]
+
+volumes:
+  mrk-data:
+  cargo-registry:
+  cargo-git:
+  cargo-target:
+  pnpm-store:
+  node-modules-root:
+  node-modules-desktop:
+  node-modules-api:

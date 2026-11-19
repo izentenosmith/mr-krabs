@@ -1,0 +1,25 @@
+[package]
+name = "mrk-devserver"
+description = "Development-only HTTP shell exposing the core command catalogue to the browser (docker compose)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+mr-krabs-core.workspace = true
+axum.workspace = true
+tokio.workspace = true
+tower-http.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+
+[lints]
+workspace = true
