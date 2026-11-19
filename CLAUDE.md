@@ -17,6 +17,7 @@ Guidance for AI coding agents (and humans) working in this repository.
 5. **React is presentational.** No money math, parsing or formatting in TS. Money arrives as `MoneyDto { minor: string, currency, display }` and user input goes back as text. Only `packages/api-client` may import `@tauri-apps/*` (ESLint enforces it).
 6. **Migrations are forward-only**: add `crates/mrk-store/migrations/NNNN_name.sql` and register it in `MIGRATIONS`. Never edit an applied migration. Every replicated table needs `hlc`, `hlc_device`, `deleted` (see `docs/05-sync.md`).
 7. **Public repo:** never commit secrets, tokens, real bank statements, spreadsheets, databases, or personal names/amounts. Test fixtures must be synthetic.
+8. **Never invent how the UI looks.** Every visual decision (colors, type, spacing, layout, components, states, motion, copy tone) is defined in `design-system/mr-krabs/MASTER.md`; a page file in `design-system/mr-krabs/pages/<page>.md`, if present, overrides it. Read both before any frontend work and use only the semantic tokens in `apps/desktop/src/index.css`, no raw hex. If the design system doesn't cover something, ask or propose an addition to `MASTER.md` instead of improvising.
 
 Decisions are recorded in `docs/adr/`. If a change contradicts an ADR, write a new ADR rather than silently diverging.
 
@@ -36,6 +37,8 @@ apps/
   desktop/         React app (src/) + Tauri shell (src-tauri/)
 packages/
   api-client/      Typed client: Tauri IPC or HTTP transport
+design-system/
+  mr-krabs/        UI design system: MASTER.md + pages/<page>.md overrides
 docs/              Design docs 00–08, ADRs, glossary
 compose.yaml       back + front + db (+ test profile)
 ```
