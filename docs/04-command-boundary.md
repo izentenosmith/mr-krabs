@@ -15,7 +15,7 @@ flowchart LR
 ```
 
 - **Two transports, one API.** `@mr-krabs/api-client` uses Tauri IPC inside the desktop app and HTTP (`POST /api/invoke/{command}` on `mrk-devserver`) in the browser during Docker development ([ADR-0007](adr/0007-devserver-http-shell.md)). Both shells call `mr_krabs_core` the same way.
-- **Single source of truth for types: Rust.** DTOs are `#[derive(Serialize, Deserialize, specta::Type)]` in `mr-krabs-core::api`. [`tauri-specta`](https://github.com/specta-rs/tauri-specta) generates `packages/api-client/src/bindings.ts` at build time; CI fails if the generated file is stale.
+- **Single source of truth for types: Rust.** DTOs are `#[derive(Serialize, Deserialize, specta::Type)]` in `mr-krabs-core::api`. [`tauri-specta`](https://github.com/specta-rs/tauri-specta) generates `packages/api-client/src/bindings.ts` at build time; CI fails if the generated file is stale. *(Planned for M1. Until then `packages/api-client/src/types.ts` is hand-written and must mirror `api.rs`.)*
 - **Commands are a façade.** Each command: `(state: State<App>, input: XInput) -> Result<XDto, ApiError>` and one call into core.
 - **DTOs ≠ domain types.** DTOs are flat, serializable, versioned; core maps domain ↔ DTO.
 - **Reads return view models** already shaped for the screen (e.g. `BudgetMatrixDto`), so React never aggregates.
@@ -42,20 +42,23 @@ React shows `display`, sorts by the server's order, and sends user text back as 
 
 ```ts
 export type ApiError = {
-  code: "VALIDATION" | "NOT_FOUND" | "CONFLICT" | "UNBALANCED_ENTRY" | "CURRENCY_MISMATCH"
+  code: "VALIDATION" | "NOT_FOUND" | "UNKNOWN_COMMAND" | "CONFLICT" | "UNBALANCED_ENTRY" | "CURRENCY_MISMATCH"
       | "IMPORT_PARSE" | "AI_DISABLED" | "AI_PROVIDER" | "SYNC_UNPAIRED" | "SYNC_INCOMPATIBLE" | "INTERNAL";
   message: string;                       // developer message (English)
   fields?: Record<string, string>;       // field → i18n key, for forms
 };
 ```
 
+Implemented today (M0): `VALIDATION`, `NOT_FOUND`, `UNKNOWN_COMMAND`, `INTERNAL`, with `{ code, message }` only; the rest arrive with their features. The TS client adds a client-only `TRANSPORT` code for IPC/HTTP failures.
+
 ## Command catalogue (v1)
 
-Naming: `<area>_<verb>`. All are `async`. Inputs/outputs abbreviated.
+Naming: `<area>_<verb>`. All are `async`. Inputs/outputs abbreviated. Implemented so far: `app_health` and `money_parse` (the live list is `COMMANDS` in `crates/mr-krabs-core/src/commands.rs`).
 
 | Area | Command | Input | Output |
 |---|---|---|---|
-| **App** | `app_bootstrap` | – | `BootstrapDto` (household, members, me, settings, schema version) |
+| **App** | `app_health` | – | `HealthDto` (status, version, schema version, DB path) |
+| | `app_bootstrap` | – | `BootstrapDto` (household, members, me, settings, schema version) |
 | | `household_create` | `{ name, my_name, base_currency }` | `HouseholdDto` |
 | | `settings_get` / `settings_update` | `SettingsPatch` | `SettingsDto` |
 | **Money** | `money_parse` | `MoneyInput` | `MoneyDto` |
@@ -137,4 +140,6 @@ export function useCreateTx() {
 ## Frontend conventions
 - `features/<area>/` holds pages, components, hooks; components receive DTOs and callbacks only.
 - shadcn/ui: `DataTable` (TanStack Table + virtualization) for transactions, `Dialog`/`Sheet` for forms, `Command` palette (⌘K), `Tabs` for Personal/Household/Combined, charts via shadcn `Chart` (Recharts) fed with pre-computed series.
-- Form state with `react-hook-form`; validation errors come from Rust (`ApiError.fields`), optionally pre-checked via `money_parse`.
+- Routing with TanStack Router (hash history, so Tauri and Vite serve the same `index.html`); route components in `src/routes/`.
+- Form state with `react-hook-form` + `zod`. Zod checks **shape only** (required, non-empty, enum values); amounts are validated in Rust (`ApiError.fields`), optionally pre-checked via `money_parse`.
+- Toasts via shadcn `Sonner`. All UI strings come from `react-i18next` resources (`src/i18n/`), never inline.

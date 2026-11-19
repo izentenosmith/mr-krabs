@@ -20,7 +20,7 @@ flowchart LR
 | `back` | `cargo watch … run -p mrk-devserver` | 7878 | Hot-reloads on changes in `crates/` and `apps/devserver/`. First start compiles everything (several minutes). |
 | `front` | `vite` dev server | 5173 | Proxies `/api/*` to `back`. `@mr-krabs/api-client` auto-selects the HTTP transport in the browser. |
 | `db` | `sqlite-web --read-only` | 8081 | SQLite is an embedded file, not a server: this service shares the data volume and lets you browse tables. Writes go only through the core. |
-| `test-back` *(profile `test`)* | `cargo test --workspace` | – | Rust unit tests. |
+| `test-back` *(profile `test`)* | `cargo test --workspace --exclude mr-krabs-desktop` | – | Rust unit tests. Own target volume (no lock contention with `back`) and no dev DB mount. |
 | `test-front` *(profile `test`)* | `pnpm lint && typecheck && test` | – | Frontend unit tests. |
 
 ## Everyday commands
@@ -66,4 +66,8 @@ pnpm lint && pnpm typecheck && pnpm test
 | `GET` | `/api/commands` | Command catalogue. |
 | `POST` | `/api/invoke/{command}` | Same commands as Tauri, JSON args/result. Errors: `422` validation, `404` unknown, `500` internal. |
 
-The devserver binds to `0.0.0.0` only inside the container; it is never packaged with the app.
+The devserver binds to `127.0.0.1:7878` by default (`MRK_BIND`); the container sets `0.0.0.0` and compose publishes it on `127.0.0.1` only. It shuts down cleanly on Ctrl-C and SIGTERM (`docker stop`, cargo-watch restarts), and it is never packaged with the app.
+
+## Logs (desktop app)
+
+The Tauri shell writes a daily-rotated `mrkrabs.*.log` (14 files kept) to the app log directory, `~/Library/Logs/cl.mrkrabs.app/` on macOS. `RUST_LOG` overrides the default `info` level. There is no remote sink.
