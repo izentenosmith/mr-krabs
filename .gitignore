@@ -31,3 +31,7 @@ secrets/
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Dev data (devserver default) and pnpm store used by docker compose
+.data/
+.pnpm-store/

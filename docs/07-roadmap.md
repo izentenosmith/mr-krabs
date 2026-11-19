@@ -7,7 +7,7 @@ gantt
     dateFormat  YYYY-MM-DD
     axisFormat  %b
     section Foundation
-    M0 Repo, CI, guardrails          :m0, 2026-12-01, 7d
+    M0 Repo, Docker, CI, guardrails  :m0, 2026-12-01, 7d
     section Single device
     M1 Vertical slice (money+ledger+UI) :m1, after m0, 14d
     M2 Categories, budgets, plan vs real :m2, after m1, 14d
@@ -25,11 +25,15 @@ gantt
 
 ---
 
-### M0 · Foundation
-- Cargo workspace with all crates (empty), pnpm workspace, Tauri v2 app scaffold, Vite + React + TS + Tailwind + shadcn/ui init.
-- CI (GitHub Actions, free for public repos): `cargo fmt --check`, `clippy -D warnings`, `cargo test` (Linux + macOS), `pnpm lint`, `tsc --noEmit`, `tools/check-no-sql-logic.sh`, bindings freshness, **gitleaks** secret scan.
-- Guardrails: `clippy.toml` disallowing floats in money crates; ESLint rule forbidding `@tauri-apps/*` outside `packages/api-client`.
-- **Done when:** empty app opens on macOS; CI green.
+### M0 · Foundation ✅
+- Cargo workspace with all crates, pnpm workspace, Tauri v2 app scaffold, Vite + React + TS + Tailwind + shadcn/ui.
+- **Docker development environment**: `docker compose up` runs `back` (Rust core behind the dev-only HTTP shell `mrk-devserver`), `front` (Vite) and `db` (read-only SQLite browser on the shared data volume); `test` profile runs all unit tests ([08-development](08-development.md), [ADR-0007](adr/0007-devserver-http-shell.md)).
+- `@mr-krabs/api-client` with Tauri IPC and HTTP transports behind one typed API.
+- First real code with unit tests: `mrk-money` (exact CLP/USD/UF parsing, formatting, allocation), `mrk-domain` (balanced double entry, transfer ≠ expense), `mrk-sync` (HLC), `mrk-store` (embedded migrations, no triggers), core command catalogue, devserver endpoints, React components.
+- CI (GitHub Actions, free for public repos): branch policy, `cargo fmt`/`clippy -D warnings`/`cargo test`, ESLint (no `@tauri-apps` in UI), `tsc`, Vitest, Vite build, Tauri check on macOS, Docker build, SQL-logic guard, gitleaks.
+- Guardrails: clippy bans `f32`/`f64` and float arithmetic workspace-wide.
+- Repo process: MIT license, `dev → main` branching with protected branches ([CONTRIBUTING](../CONTRIBUTING.md)).
+- **Done when:** `docker compose up` shows the UI talking to the core; `pnpm tauri dev` opens the app on macOS; CI green.
 
 ### M1 · Vertical slice — "record an expense and see the balance"
 - `mrk-money`: `Money`, `CurrencyCode`, parse/format es-CL, `allocate`; property tests.

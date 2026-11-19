@@ -65,8 +65,9 @@ mr-krabs/
 │   ├── mrk-import/               # CSV/XLSX/PDF parsers, bank profiles, dedup, staging
 │   ├── mrk-ai/                   # Optional LLM extraction (feature-gated), provider trait
 │   ├── mrk-sync/                 # HLC, change log, protocol, mDNS, Noise transport, pairing
-│   └── mr-krabs-core/            # Facade: application services + DTOs + ports (public API)
+│   └── mr-krabs-core/            # Facade: application services + DTOs + command catalogue
 ├── apps/
+│   ├── devserver/                # Dev-only HTTP shell over the core (docker compose `back`, ADR-0007)
 │   └── desktop/
 │       ├── src-tauri/            # Tauri v2 shell (depends ONLY on mr-krabs-core)
 │       │   ├── src/commands/*.rs
@@ -79,11 +80,13 @@ mr-krabs/
 │           └── lib/              # formatting helpers (display only), hooks
 ├── packages/
 │   └── api-client/               # Generated bindings (tauri-specta) + typed wrappers
+├── docker/                       # back.Dockerfile, front.Dockerfile (dev images)
+├── compose.yaml                  # back + front + db (+ test profile)
 ├── docs/
 ├── tools/
 │   ├── check-no-sql-logic.sh     # CI: fail on CREATE TRIGGER/VIEW/PROCEDURE in migrations
 │   └── gen-bindings.sh
-└── .github/workflows/ci.yml      # fmt, clippy, tests (Linux + macOS), eslint, typecheck
+└── .github/workflows/ci.yml      # branch policy, fmt, clippy, tests, eslint, typecheck, docker, gitleaks
 ```
 
 ### Crate dependency graph (enforced by Cargo)
@@ -108,9 +111,10 @@ flowchart LR
     sync --> store
     core --> store & import & sync & domain
     tauri --> core
+    devserver["devserver<br/>(dev only)"] --> core
 ```
 
-`src-tauri` depends **only** on `mr-krabs-core`. `mrk-domain` has no IO dependencies (no `rusqlite`, no `tokio`), so all financial rules are testable as pure functions.
+`src-tauri` and `devserver` depend **only** on `mr-krabs-core`. `mrk-domain` has no IO dependencies (no `rusqlite`, no `tokio`), so all financial rules are testable as pure functions.
 
 ### Boundary enforcement
 

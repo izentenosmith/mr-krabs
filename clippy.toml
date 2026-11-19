@@ -1,0 +1,5 @@
+# Money must never touch floating point (ADR-0003).
+disallowed-types = [
+    { path = "f32", reason = "use integer minor units (mrk_money::Money) or a decimal type" },
+    { path = "f64", reason = "use integer minor units (mrk_money::Money) or a decimal type" },
+]

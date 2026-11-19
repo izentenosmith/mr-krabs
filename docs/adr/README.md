@@ -8,5 +8,6 @@
 | [0004](0004-noise-protocol-for-lan.md) | Noise XX + SPAKE2 pairing for LAN sync | Accepted |
 | [0005](0005-hlc-per-field-lww.md) | HLC + per-field LWW change log | Accepted |
 | [0006](0006-ai-optional-extractor-only.md) | AI is optional and only proposes | Accepted |
+| [0007](0007-devserver-http-shell.md) | Dev-only HTTP shell for Docker development | Accepted |
 
 Template: Context → Decision → Consequences.

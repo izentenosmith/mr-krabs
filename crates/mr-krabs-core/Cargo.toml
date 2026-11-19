@@ -1,0 +1,22 @@
+[package]
+name = "mr-krabs-core"
+description = "Mr Krabs application core: services, DTOs and the command catalogue shared by all shells"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+mrk-money.workspace = true
+mrk-domain.workspace = true
+mrk-store.workspace = true
+mrk-import.workspace = true
+mrk-ai.workspace = true
+mrk-sync.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true
