@@ -17,6 +17,11 @@ mrk-ai.workspace = true
 mrk-sync.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+insta.workspace = true
+pretty_assertions.workspace = true
 
 [lints]
 workspace = true
