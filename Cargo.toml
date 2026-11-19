@@ -1,0 +1,59 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/mrk-money",
+    "crates/mrk-domain",
+    "crates/mrk-store",
+    "crates/mrk-import",
+    "crates/mrk-ai",
+    "crates/mrk-sync",
+    "crates/mr-krabs-core",
+    "apps/devserver",
+    "apps/desktop/src-tauri",
+]
+# `cargo build/test` without -p skips the Tauri shell (needs macOS/WebView toolchain).
+default-members = [
+    "crates/mrk-money",
+    "crates/mrk-domain",
+    "crates/mrk-store",
+    "crates/mrk-import",
+    "crates/mrk-ai",
+    "crates/mrk-sync",
+    "crates/mr-krabs-core",
+    "apps/devserver",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT"
+repository = "https://github.com/izentenosmith/mr-krabs"
+
+[workspace.dependencies]
+mrk-money = { path = "crates/mrk-money" }
+mrk-domain = { path = "crates/mrk-domain" }
+mrk-store = { path = "crates/mrk-store" }
+mrk-import = { path = "crates/mrk-import" }
+mrk-ai = { path = "crates/mrk-ai" }
+mrk-sync = { path = "crates/mrk-sync" }
+mr-krabs-core = { path = "crates/mr-krabs-core" }
+
+rusqlite = { version = "0.37", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "net"] }
+axum = "0.8"
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+float_arithmetic = "deny"
+disallowed_types = "deny"
+
+[profile.dev.package."*"]
+opt-level = 1

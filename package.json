@@ -1,0 +1,17 @@
+{
+  "name": "mr-krabs",
+  "private": true,
+  "license": "MIT",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @mr-krabs/desktop dev",
+    "build": "pnpm --filter @mr-krabs/desktop build",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "tauri": "pnpm --filter @mr-krabs/desktop tauri"
+  }
+}

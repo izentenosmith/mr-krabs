@@ -1,0 +1,15 @@
+[package]
+name = "mrk-money"
+description = "Exact money types: integer minor units, currencies, allocation, es-CL parsing/formatting"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+
+
+[lints]
+workspace = true

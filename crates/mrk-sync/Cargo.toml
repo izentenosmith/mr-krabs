@@ -1,0 +1,15 @@
+[package]
+name = "mrk-sync"
+description = "LAN sync engine: hybrid logical clocks, change log, merge"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+
+
+[lints]
+workspace = true

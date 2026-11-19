@@ -14,6 +14,7 @@ flowchart LR
     Api -- "invalidate queries" --> Hook
 ```
 
+- **Two transports, one API.** `@mr-krabs/api-client` uses Tauri IPC inside the desktop app and HTTP (`POST /api/invoke/{command}` on `mrk-devserver`) in the browser during Docker development ([ADR-0007](adr/0007-devserver-http-shell.md)). Both shells call `mr_krabs_core` the same way.
 - **Single source of truth for types: Rust.** DTOs are `#[derive(Serialize, Deserialize, specta::Type)]` in `mr-krabs-core::api`. [`tauri-specta`](https://github.com/specta-rs/tauri-specta) generates `packages/api-client/src/bindings.ts` at build time; CI fails if the generated file is stale.
 - **Commands are a façade.** Each command: `(state: State<App>, input: XInput) -> Result<XDto, ApiError>` and one call into core.
 - **DTOs ≠ domain types.** DTOs are flat, serializable, versioned; core maps domain ↔ DTO.
