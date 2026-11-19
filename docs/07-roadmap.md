@@ -32,11 +32,13 @@ gantt
 - First real code with unit tests: `mrk-money` (exact CLP/USD/UF parsing, formatting, allocation), `mrk-domain` (balanced double entry, transfer ≠ expense), `mrk-sync` (HLC), `mrk-store` (embedded migrations, no triggers), core command catalogue, devserver endpoints, React components.
 - CI (GitHub Actions, free for public repos): branch policy, `cargo fmt`/`clippy -D warnings`/`cargo test`, ESLint (no `@tauri-apps` in UI), `tsc`, Vitest, Vite build, Tauri check on macOS, Docker build, SQL-logic guard, gitleaks.
 - Guardrails: clippy bans `f32`/`f64` and float arithmetic workspace-wide.
-- Repo process: MIT license, `dev → main` branching with protected branches ([CONTRIBUTING](../CONTRIBUTING.md)).
+- Repo process: MIT license, `dev → main` branching with protected branches ([CONTRIBUTING](../CONTRIBUTING.md)); committed lockfiles, CI installs locked/frozen.
+- UI [design system](../design-system/mr-krabs/MASTER.md) with semantic light/dark tokens; shared agent memory in `.memory/`.
 - **Done when:** `docker compose up` shows the UI talking to the core; `pnpm tauri dev` opens the app on macOS; CI green.
 
 ### M1 · Vertical slice — "record an expense and see the balance"
-- `mrk-money`: `Money`, `CurrencyCode`, parse/format es-CL, `allocate`; property tests.
+- **Progress:** libraries adopted ahead of the slice: `thiserror`, `proptest`, `insta`, `tracing-appender` file logs, `uuid` v7 + `jiff` declared; TanStack Router/Table/Virtual, `react-i18next`, `react-hook-form` + `zod`, shadcn Sonner/Command/Dialog/Chart. `mrk-money` items below are done (with property tests).
+- `mrk-money`: `Money`, `CurrencyCode`, parse/format es-CL, `allocate`; property tests. ✅
 - `mrk-domain`: `JournalEntry::validate` (balanced per currency), `account_balances`.
 - `mrk-store`: migration runner, `0001_init.sql`, account + entry + posting repositories; writer actor + read pool; WAL.
 - `mr-krabs-core`: `App` façade, `AccountService`, `TransactionService`; change-log writes already happen (sync-ready).
