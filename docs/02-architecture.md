@@ -78,6 +78,7 @@ mr-krabs/
 │           ├── features/         # accounts/, transactions/, budgets/, reports/, import/, sync/, settings/
 │           ├── routes/
 │           └── lib/              # formatting helpers (display only), hooks
+├── design-system/mr-krabs/       # UI design system: MASTER.md + pages/<page>.md overrides
 ├── packages/
 │   └── api-client/               # Generated bindings (tauri-specta) + typed wrappers
 ├── docker/                       # back.Dockerfile, front.Dockerfile (dev images)
@@ -191,4 +192,5 @@ Data location: `~/Library/Application Support/cl.mrkrabs.app/` (`mrkrabs.sqlite`
 | Time | Dates of transactions are civil `NaiveDate` (no TZ); audit timestamps are HLC (UTC ms + counter). |
 | IDs | UUIDv7 everywhere (time-ordered, globally unique, good B-tree locality). |
 | i18n | `es-CL` default, `en`. Number formatting performed in Rust (`MoneyDto.display`) to guarantee consistency; UI may use `Intl` for non-money numbers. |
+| UI design | [Design system](../design-system/mr-krabs/MASTER.md): semantic tokens in `apps/desktop/src/index.css`, light/dark via macOS appearance, system fonts only (offline), color never the sole signal. |
 | Testing | Unit + property tests (proptest) in domain; repository tests on in-memory SQLite; importer golden files; sync simulation tests (two in-process peers with random offline edits); Playwright/Tauri driver smoke tests. |
