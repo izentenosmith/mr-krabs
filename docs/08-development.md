@@ -7,7 +7,7 @@ Development runs in **Docker** so every machine gets the same toolchain. The shi
 ```mermaid
 flowchart LR
     Browser["Browser<br/>localhost:5173"] --> front
-    subgraph compose["docker compose (project: mr-krabs)"]
+    subgraph compose["docker compose (project: checkout dir)"]
         front["front<br/>Vite + React + shadcn<br/>:5173"] -- "/api proxy" --> back["back<br/>mrk-devserver (axum)<br/>+ mr-krabs-core<br/>:7878"]
         back --> vol[("mrk-data volume<br/>/data/mrkrabs.sqlite")]
         db["db<br/>sqlite-web (read-only)<br/>:8081"] --> vol
@@ -34,7 +34,9 @@ docker compose down                  # stop (keeps data)
 docker compose down -v               # stop and wipe data + caches
 ```
 
-Generated lockfiles (`Cargo.lock`, `pnpm-lock.yaml`) appear in your working tree on first run — **commit them**.
+`Cargo.lock` and `pnpm-lock.yaml` are committed and CI installs from them frozen; commit any change to them along with the manifest change that caused it.
+
+The compose project name comes from the checkout directory, so each git worktree gets its own volumes (build cache and dev DB). Ports are fixed and bound to `127.0.0.1`, so run one worktree's stack at a time.
 
 ## Native (desktop app)
 

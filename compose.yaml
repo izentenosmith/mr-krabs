@@ -9,13 +9,17 @@
 #
 # The production app is the Tauri desktop shell; this environment runs the same core
 # behind a dev-only HTTP shell (apps/devserver). See docs/08-development.md.
-
-name: mr-krabs
+#
+# No top-level `name:` on purpose: the project name comes from the checkout directory,
+# so each git worktree gets its own volumes (build cache, dev DB) instead of sharing
+# and clobbering one set. Ports are fixed, so run one stack at a time.
+# Ports bind to 127.0.0.1 only: the API and DB browser expose your data.
 
 x-rust: &rust
   build:
     context: .
     dockerfile: docker/back.Dockerfile
+  init: true # tini as PID 1: forwards SIGTERM and reaps children
   volumes:
     - .:/workspace
     - cargo-registry:/usr/local/cargo/registry
@@ -23,24 +27,27 @@ x-rust: &rust
     - cargo-target:/cargo-target
     - mrk-data:/data
 
+x-node-env: &node-env
+  npm_config_store_dir: /workspace/.pnpm-store
+
 x-node: &node
   build:
     context: .
     dockerfile: docker/front.Dockerfile
+  init: true
   volumes:
     - .:/workspace
     - pnpm-store:/workspace/.pnpm-store
     - node-modules-root:/workspace/node_modules
     - node-modules-desktop:/workspace/apps/desktop/node_modules
     - node-modules-api:/workspace/packages/api-client/node_modules
-  environment:
-    npm_config_store_dir: /workspace/.pnpm-store
+  environment: *node-env
 
 services:
   back:
     <<: *rust
     ports:
-      - "7878:7878"
+      - "127.0.0.1:7878:7878"
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:7878/api/health"]
       interval: 10s
@@ -52,23 +59,27 @@ services:
   front:
     <<: *node
     environment:
-      npm_config_store_dir: /workspace/.pnpm-store
+      <<: *node-env
       VITE_PROXY_TARGET: http://back:7878
       VITE_POLLING: "true"
     ports:
-      - "5173:5173"
+      - "127.0.0.1:5173:5173"
+    # Start-order only, not service_healthy: the UI comes up at once and the /api proxy
+    # errors until back finishes its first compile (which can take minutes).
     depends_on:
       - back
 
   db:
     # SQLite is an embedded file, not a server: this service shares the data volume and
-    # gives a read-only browser over it for debugging.
-    image: coleifer/sqlite-web:latest
+    # gives a read-only browser over it for debugging. Upstream publishes only `latest`,
+    # so it is pinned by digest; bump it by hand.
+    image: coleifer/sqlite-web@sha256:1e5b86237968ed747554f951c6df2fc2fe4bf4ef070b8ca23d553d7f6c6426f7
+    init: true
     command: ["sqlite_web", "--host", "0.0.0.0", "--port", "8080", "--no-browser", "--read-only", "/data/mrkrabs.sqlite"]
     volumes:
       - mrk-data:/data
     ports:
-      - "8081:8080"
+      - "127.0.0.1:8081:8080"
     depends_on:
       back:
         condition: service_healthy
@@ -76,6 +87,12 @@ services:
   test-back:
     <<: *rust
     profiles: ["test"]
+    # Own target dir (no lock contention with back's cargo watch) and no dev DB mount.
+    volumes:
+      - .:/workspace
+      - cargo-registry:/usr/local/cargo/registry
+      - cargo-git:/usr/local/cargo/git
+      - cargo-target-test:/cargo-target
     command: ["cargo", "test", "--workspace", "--exclude", "mr-krabs-desktop"]
 
   test-front:
@@ -88,6 +105,7 @@ volumes:
   cargo-registry:
   cargo-git:
   cargo-target:
+  cargo-target-test:
   pnpm-store:
   node-modules-root:
   node-modules-desktop:

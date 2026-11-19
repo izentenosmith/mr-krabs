@@ -8,4 +8,6 @@ RUN corepack enable && corepack prepare pnpm@10.28.0 --activate
 
 WORKDIR /workspace
 EXPOSE 5173
-CMD ["sh", "-c", "pnpm install && pnpm --filter @mr-krabs/desktop exec vite --host 0.0.0.0"]
+# No HEALTHCHECK: dev-only image, nothing gates on the UI being ready.
+# `exec` hands PID 1's role to the server so `docker stop`'s SIGTERM reaches it.
+CMD ["sh", "-c", "pnpm install && exec pnpm --filter @mr-krabs/desktop exec vite --host 0.0.0.0"]

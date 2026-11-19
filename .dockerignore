@@ -1,6 +1,29 @@
-target
+# Patterns are anchored at the context root (unlike .gitignore): use **/ for nested paths.
+# The dev Dockerfiles copy nothing today; this keeps the context safe if one ever does.
+
+# Secrets
+**/.env
+**/.env.*
+!**/.env.example
+**/*.pem
+**/*.key
+**/*.p12
+**/secrets
+
+# Build output and caches
+**/target
 **/node_modules
 **/dist
-.git
+.pnpm-store
+apps/desktop/src-tauri/gen
+
+# Local data
 .data
-*.sqlite*
+**/*.sqlite*
+**/*.db
+**/*.db-*
+**/*.mrkbackup
+
+# Not needed in any image
+.git
+.claude
