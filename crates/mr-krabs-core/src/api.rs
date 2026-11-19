@@ -15,7 +15,8 @@ pub enum ErrorCode {
     Internal,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
+#[error("{code:?}: {message}")]
 pub struct ApiError {
     pub code: ErrorCode,
     pub message: String,
@@ -35,14 +36,6 @@ impl ApiError {
         Self::new(ErrorCode::Internal, e.to_string())
     }
 }
-
-impl Display for ApiError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}: {}", self.code, self.message)
-    }
-}
-
-impl std::error::Error for ApiError {}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

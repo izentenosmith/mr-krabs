@@ -1,4 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { createMemoryHistory } from "@tanstack/react-router";
 import { render, screen } from "@testing-library/react";
 
 import App from "./App";
@@ -24,10 +25,10 @@ describe("App", () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={qc}>
-        <App />
+        <App history={createMemoryHistory({ initialEntries: ["/"] })} />
       </QueryClientProvider>,
     );
-    expect(screen.getByRole("heading", { name: "Mr Krabs" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Mr Krabs" })).toBeInTheDocument();
     expect(await screen.findByText("En línea")).toBeInTheDocument();
     expect(screen.getByText("en memoria")).toBeInTheDocument();
   });

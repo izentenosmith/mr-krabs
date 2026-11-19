@@ -47,6 +47,16 @@ axum = "0.8"
 tower-http = { version = "0.6", features = ["cors", "trace"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
+thiserror = "2"
+# Declared here so M1 crates share one version: UUIDv7 ids, civil dates (docs/02-architecture.md).
+uuid = { version = "1", features = ["v7", "serde"] }
+jiff = { version = "0.2", features = ["serde"] }
+
+# Test-only
+proptest = "1"
+insta = { version = "1", features = ["json"] }
+pretty_assertions = "1"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
