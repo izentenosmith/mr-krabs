@@ -26,8 +26,8 @@ pub const MIGRATIONS: &[(&str, &str)] = &[
         include_str!("../migrations/0002_ledger_legs_and_category_keys.sql"),
     ),
     (
-        "pending_sync-stamps__device_key_nullable",
-        include_str!("../migrations/pending_sync-stamps__device_key_nullable.sql"),
+        "0003_device_key_nullable",
+        include_str!("../migrations/0003_device_key_nullable.sql"),
     ),
 ];
 
