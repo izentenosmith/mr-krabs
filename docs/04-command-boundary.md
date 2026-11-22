@@ -15,7 +15,7 @@ flowchart LR
 ```
 
 - **Two transports, one API.** `@mr-krabs/api-client` uses Tauri IPC inside the desktop app and HTTP (`POST /api/invoke/{command}` on `mrk-devserver`) in the browser during Docker development ([ADR-0007](adr/0007-devserver-http-shell.md)). Both shells call `mr_krabs_core` the same way.
-- **Single source of truth for types: Rust.** DTOs are `#[derive(Serialize, Deserialize, specta::Type)]` in `mr-krabs-core::api`. [`tauri-specta`](https://github.com/specta-rs/tauri-specta) generates `packages/api-client/src/bindings.ts` at build time; CI fails if the generated file is stale. *(Planned for M1. Until then `packages/api-client/src/types.ts` is hand-written and must mirror `api.rs`.)*
+- **Single source of truth for types: Rust.** DTOs are `#[derive(Serialize, Deserialize, specta::Type)]` in `mr-krabs-core::api`. A core test exports them with `specta-typescript` to `packages/api-client/src/bindings.ts`; CI fails if the generated file is stale. Commands stay hand-registered in both shells, so the core never depends on Tauri. *(Lands in M1's `feat/api-contract`. Until then `packages/api-client/src/types.ts` is hand-written and must mirror `api.rs`.)*
 - **Commands are a façade.** Each command: `(state: State<App>, input: XInput) -> Result<XDto, ApiError>` and one call into core.
 - **DTOs ≠ domain types.** DTOs are flat, serializable, versioned; core maps domain ↔ DTO.
 - **Reads return view models** already shaped for the screen (e.g. `BudgetMatrixDto`), so React never aggregates.
@@ -42,14 +42,14 @@ React shows `display`, sorts by the server's order, and sends user text back as 
 
 ```ts
 export type ApiError = {
-  code: "VALIDATION" | "NOT_FOUND" | "UNKNOWN_COMMAND" | "CONFLICT" | "UNBALANCED_ENTRY" | "CURRENCY_MISMATCH"
+  code: "VALIDATION" | "NOT_FOUND" | "UNKNOWN_COMMAND" | "NOT_IMPLEMENTED" | "CONFLICT" | "UNBALANCED_ENTRY" | "CURRENCY_MISMATCH"
       | "IMPORT_PARSE" | "AI_DISABLED" | "AI_PROVIDER" | "SYNC_UNPAIRED" | "SYNC_INCOMPATIBLE" | "INTERNAL";
   message: string;                       // developer message (English)
   fields?: Record<string, string>;       // field → i18n key, for forms
 };
 ```
 
-Implemented today (M0): `VALIDATION`, `NOT_FOUND`, `UNKNOWN_COMMAND`, `INTERNAL`, with `{ code, message }` only; the rest arrive with their features. The TS client adds a client-only `TRANSPORT` code for IPC/HTTP failures.
+Implemented today (M0): `VALIDATION`, `NOT_FOUND`, `UNKNOWN_COMMAND`, `INTERNAL`, with `{ code, message }` only; the rest arrive with their features. During M1, commands that are in the catalogue but not built yet return `NOT_IMPLEMENTED`. The TS client adds a client-only `TRANSPORT` code for IPC/HTTP failures.
 
 ## Command catalogue (v1)
 

@@ -41,10 +41,14 @@ gantt
 - `mrk-money`: `Money`, `CurrencyCode`, parse/format es-CL, `allocate`; property tests. ✅
 - `mrk-domain`: `JournalEntry::validate` (balanced per currency), `account_balances`.
 - `mrk-store`: migration runner, `0001_init.sql`, account + entry + posting repositories; writer actor + read pool; WAL.
-- `mr-krabs-core`: `App` façade, `AccountService`, `TransactionService`; change-log writes already happen (sync-ready).
+- `mr-krabs-core`: `App` façade, `AccountService`, `TransactionService`; every mutation writes `change_log` + `field_clock` in the same transaction, stamped by the local device's HLC ([ADR-0010](adr/0010-change-log-from-m1.md)).
 - Tauri: `app_bootstrap`, `household_create`, `account_*`, `tx_create/list/update/delete`, `money_parse`; specta bindings.
 - UI: onboarding (household, base currency CLP), accounts sidebar with balances, transactions table, add/edit expense/income/transfer dialog.
 - **Done when:** create a checking account, add expenses & a transfer to savings, balances correct; transfer not counted as expense; 100% of money logic covered by Rust tests.
+- **Slices** (one PR each into `dev`; design review 2026-11-22):
+  - Wave 1, in parallel: `fix/compose-schema-step` (compose test profile applies migrations in order, like CI) · `feat/sync-stamps` (HLC clock, local device, change-log writer, device-key migration) · `feat/ledger-domain` (`JournalEntry::validate`, transaction expansion, in-place leg edits, `account_balances`) · `feat/api-contract` (specta bindings, all M1 DTOs and commands as `NOT_IMPLEMENTED` stubs).
+  - Wave 2: `feat/household-accounts` (after sync-stamps, ledger-domain, api-contract) · `feat/ui-onboarding-accounts` and `feat/ui-transactions` (after api-contract).
+  - Wave 3: `feat/transactions` (after household-accounts) · `feat/m1-journey` (end-to-end check through the devserver, docs status; last).
 
 ### M2 · Categories, budgets, plan-vs-real (replaces the spreadsheet)
 - Seed category tree (see [01](01-requirements.md#default-category-tree-seed-es-cl)) as ordinary, editable rows; savings/investments seeded as accounts.
@@ -87,6 +91,12 @@ gantt
 - Encrypted backups/restore, CSV export, optional SQLCipher at rest, Touch ID app lock.
 - Signed & notarized `.dmg` (needs an Apple Developer account — the only potential cost, **optional**: unsigned builds work locally), GitHub Releases for distribution (free).
 - es-CL / en translations, accessibility pass.
+
+## Parallel tracks after M1
+Milestones above are listed in dependency order, but not all of them depend on each other. Once M1 is done, three tracks can run side by side (starting each is the owner's call):
+- **Ledger:** M2 → { M3 ‖ M4 } → M5. M3 (members, scopes, settle-up) doesn't need budgets; M4 needs M2's categories and budget mode; M5 needs M2 and M4.
+- **Sync:** M8's transport (mDNS, pairing, Noise) needs only M1's device identity; M7's merge engine can start on M1's change log and add per-entity rules as M2–M4 add tables. Starting sync before M4 relaxes the principle at the top of this page, so it needs the owner's go.
+- **Edges:** M6's PDF parsers and the `mrk-ai` provider are pure and can start after M1 (their staging commit waits for M5); M9's packaging is independent, and backups wait for the schema to settle after M5.
 
 ## Definition of done (every milestone)
 - Rust tests for all new domain behavior; no money math outside Rust.
