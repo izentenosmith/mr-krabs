@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   api,
   type AccountDetailDto,
@@ -27,6 +27,8 @@ export function AccountsSidebarContainer() {
   const list = useQuery({
     queryKey: [...accountsKey, "list", { includeArchived: showArchived }],
     queryFn: () => api.account.list({ view: "combined", includeArchived: showArchived }),
+    // Keep the rows on screen while the other archived view loads.
+    placeholderData: keepPreviousData,
   });
 
   const editId = editing?.mode === "edit" ? editing.id : null;
