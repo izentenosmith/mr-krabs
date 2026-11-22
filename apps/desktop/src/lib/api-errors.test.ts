@@ -36,6 +36,29 @@ describe("applyServerErrors", () => {
   });
 });
 
+describe("applyServerErrors for codes other than VALIDATION (X-13)", () => {
+  it("a code with every field mapped also sets its own form-level copy", () => {
+    const setError = vi.fn();
+    applyServerErrors(
+      new ApiError("CURRENCY_MISMATCH", "x", { "openingBalance.amount": "errors.field.currencyMismatch" }),
+      setError,
+      { "openingBalance.amount": "openingAmount" },
+    );
+    expect(setError.mock.calls).toEqual([
+      ["openingAmount", { type: "server", message: "errors.field.currencyMismatch" }],
+      ["root.server", { type: "CURRENCY_MISMATCH" }],
+    ]);
+  });
+
+  it("VALIDATION with every field mapped stays field-level only", () => {
+    const setError = vi.fn();
+    applyServerErrors(new ApiError("VALIDATION", "x", { name: "errors.field.required" }), setError, {
+      name: "name",
+    });
+    expect(setError).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("errorCopyKey", () => {
   it("maps a known code to its copy and an unknown one to the generic copy", () => {
     expect(errorCopyKey("CURRENCY_MISMATCH")).toBe("errors.code.CURRENCY_MISMATCH");

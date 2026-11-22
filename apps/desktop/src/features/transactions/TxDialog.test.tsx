@@ -123,4 +123,17 @@ describe("TxDialog", () => {
     fireEvent.click(d.getByRole("radio", { name: "Ingreso" }));
     expect(d.getByLabelText("Categoría")).toHaveValue("c2");
   });
+
+  it("CURRENCY_MISMATCH with a field error shows both the field copy and its own copy (X-13)", async () => {
+    const onSubmit = vi
+      .fn()
+      .mockRejectedValue(new ApiError("CURRENCY_MISMATCH", "dev", { "amount.amount": "errors.field.currencyMismatch" }));
+    const { d } = renderDialog({ onSubmit });
+    fireEvent.change(d.getByLabelText("Cuenta"), { target: { value: "a1" } });
+    fireEvent.change(d.getByLabelText("Categoría"), { target: { value: "c1" } });
+    fireEvent.change(d.getByLabelText("Monto"), { target: { value: "1" } });
+    fireEvent.click(d.getByRole("button", { name: "Guardar" }));
+    expect(await d.findByRole("alert")).toHaveTextContent("La moneda no coincide con la de la cuenta.");
+    expect(d.getByLabelText("Monto")).toHaveAttribute("aria-invalid", "true");
+  });
 });

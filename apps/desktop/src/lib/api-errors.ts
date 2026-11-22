@@ -32,7 +32,8 @@ export function fieldMessage(t: TFunction, key: string | undefined) {
 
 /**
  * Puts a rejected command's error on the form: `fields` (wire path → i18n key) under the
- * matching form fields, anything else as the form-level error with the code as its type.
+ * matching form fields; the form-level error (the code as its type) for any code other than
+ * VALIDATION, and for VALIDATION when a field can't be shown or none was named.
  * `fieldMap` maps wire paths (`openingBalance.amount`) to form field names.
  */
 export function applyServerErrors<T extends FieldValues>(
@@ -47,7 +48,10 @@ export function applyServerErrors<T extends FieldValues>(
     if (field && key) setError(field, { type: "server", message: key });
     else unmapped = true;
   }
-  if (!error.fields || unmapped || Object.keys(error.fields).length === 0) {
+  // A code other than VALIDATION always says what happened at form level, even when its
+  // fields are all shown (X-13); VALIDATION is form-level only when a field can't be shown.
+  const fieldless = !error.fields || Object.keys(error.fields).length === 0;
+  if (error.code !== "VALIDATION" || unmapped || fieldless) {
     setError(SERVER_ERROR, { type: error.code });
   }
 }
