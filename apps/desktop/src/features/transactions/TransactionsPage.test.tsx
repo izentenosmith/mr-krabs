@@ -221,3 +221,18 @@ describe("TransactionsPage writes", () => {
     expect(lastClient.getQueryState(archivedKey)?.isInvalidated).toBe(true);
   });
 });
+
+describe("TransactionsPage accounts", () => {
+  it("a failing account_list shows its code's copy with a retry (F14)", async () => {
+    api.tx.list.mockResolvedValue({ items: [row], nextCursor: null });
+    api.account.list.mockRejectedValueOnce(new ApiError("TRANSPORT", "developer message"));
+    api.account.list.mockResolvedValue(accounts);
+    renderPage();
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "No pudimos conectar con el núcleo. Intenta de nuevo.",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Reintentar" }));
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+    expect(await screen.findByRole("option", { name: "Corriente Prueba" })).toBeInTheDocument();
+  });
+});

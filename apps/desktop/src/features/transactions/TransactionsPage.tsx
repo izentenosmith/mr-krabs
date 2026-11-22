@@ -35,6 +35,22 @@ const UNDO_MS = 8000; // MASTER §7.2 undo toast
 const ACCOUNTS_KEY = ["accounts"] as const;
 
 /** The open dialog; `key` identifies one opening so late answers can't touch a newer one. */
+/** A failed load: the code's copy (MASTER §7.1 form-level style) and a retry. */
+function ErrorAlert({ error, onRetry }: { error: unknown; onRetry: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <div className="flex flex-col items-start gap-3">
+      <p role="alert" className="text-destructive flex items-center gap-2 text-sm">
+        <CircleAlert aria-hidden className="size-4" />
+        {t(errorCopyKey(ApiError.from(error).code))}
+      </p>
+      <Button variant="outline" onClick={onRetry}>
+        {t("tx.retry")}
+      </Button>
+    </div>
+  );
+}
+
 type OpenDialog = ({ mode: "create" } | { mode: "edit"; detail: TxDetailDto }) & { key: number };
 
 export function TransactionsPage({
@@ -149,6 +165,9 @@ export function TransactionsPage({
           {t("tx.new")}
         </Button>
       </header>
+      {accounts.isError && !notAvailable && (
+        <ErrorAlert error={accounts.error} onRetry={() => void accounts.refetch()} />
+      )}
       {notAvailable ? (
         <StateBlock icon={Hourglass} title={t("notAvailable.title")} body={t("notAvailable.body")} />
       ) : list.isPending ? (
@@ -156,15 +175,7 @@ export function TransactionsPage({
           {t("loading")}
         </p>
       ) : list.isError && !list.data ? (
-        <div className="flex flex-col items-start gap-3">
-          <p role="alert" className="text-destructive flex items-center gap-2 text-sm">
-            <CircleAlert aria-hidden className="size-4" />
-            {t(errorCopyKey(ApiError.from(list.error).code))}
-          </p>
-          <Button variant="outline" onClick={() => void list.refetch()}>
-            {t("tx.retry")}
-          </Button>
-        </div>
+        <ErrorAlert error={list.error} onRetry={() => void list.refetch()} />
       ) : rows.length === 0 ? (
         <StateBlock icon={Inbox} title={t("tx.emptyTitle")} body={t("tx.emptyBody")} />
       ) : (
