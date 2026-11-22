@@ -102,6 +102,12 @@ export const en: Messages<typeof esCL> = {
       required: "This field is required",
       invalidAmount: "Invalid amount",
       tooLong: "This is too long",
+      unsupportedCurrency: "This currency isn't available",
+      invalidDate: "Invalid date",
+      currencyMismatch: "Doesn't match the account's currency",
+      notAllowed: "This option isn't allowed here",
+      fullNumber: "Enter only the last 4 digits",
+      lockedByPostings: "Can't change: the account already has transactions",
       unknown: "Check this field",
     },
     code: {

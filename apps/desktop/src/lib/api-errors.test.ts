@@ -86,3 +86,28 @@ describe("fieldMessage", () => {
     expect(fieldMessage(t, undefined)).toBeUndefined();
   });
 });
+
+describe("errors.field copy (X-13)", () => {
+  // Every `errors.field.<reason>` the core sends (#29's table, plus `invalidDate` from mrk-domain).
+  const reasons = [
+    "required",
+    "tooLong",
+    "unsupportedCurrency",
+    "invalidAmount",
+    "invalidDate",
+    "currencyMismatch",
+    "notAllowed",
+    "fullNumber",
+    "lockedByPostings",
+  ];
+
+  it.each(["es-CL", "en"])("has its own copy for every reason in %s", (lng) => {
+    const t = i18n.getFixedT(lng);
+    const generic = t("errors.field.unknown");
+    for (const reason of reasons) {
+      const key = `errors.field.${reason}`;
+      expect(i18n.getResource(lng, "translation", key), key).toEqual(expect.any(String));
+      expect(fieldMessage(t, key), key).not.toBe(generic);
+    }
+  });
+});

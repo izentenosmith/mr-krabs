@@ -98,6 +98,12 @@ export const esCL = {
       required: "Este campo es obligatorio",
       invalidAmount: "Monto no válido",
       tooLong: "Es demasiado largo",
+      unsupportedCurrency: "Esta moneda no está disponible",
+      invalidDate: "Fecha no válida",
+      currencyMismatch: "No coincide con la moneda de la cuenta",
+      notAllowed: "Esta opción no está permitida aquí",
+      fullNumber: "Ingresa solo los últimos 4 dígitos",
+      lockedByPostings: "No se puede cambiar: la cuenta ya tiene movimientos",
       unknown: "Revisa este campo",
     },
     code: {
