@@ -48,3 +48,12 @@ export function applyServerErrors<T extends FieldValues>(
     setError(SERVER_ERROR, { type: error.code });
   }
 }
+
+/**
+ * Query retry policy: only a transport failure (IPC/HTTP) may be transient. Any answer from
+ * the core — NOT_IMPLEMENTED included — is final, so it shows at once instead of after
+ * TanStack Query's default three back-off retries.
+ */
+export function shouldRetry(failureCount: number, error: unknown): boolean {
+  return failureCount < 3 && ApiError.from(error).code === "TRANSPORT";
+}

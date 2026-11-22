@@ -1,6 +1,6 @@
 import { ApiError } from "@mr-krabs/api-client";
 
-import { applyServerErrors, errorCopyKey } from "./api-errors";
+import { applyServerErrors, errorCopyKey, shouldRetry } from "./api-errors";
 
 describe("applyServerErrors", () => {
   it("puts mapped fields on their form fields and nothing at form level", () => {
@@ -38,5 +38,16 @@ describe("errorCopyKey", () => {
   it("maps a known code to its copy and an unknown one to the generic copy", () => {
     expect(errorCopyKey("CURRENCY_MISMATCH")).toBe("errors.code.CURRENCY_MISMATCH");
     expect(errorCopyKey("SOMETHING_NEW")).toBe("errors.code.INTERNAL");
+  });
+});
+
+describe("shouldRetry", () => {
+  it("retries only transport failures, at most 3 times; core answers are final", () => {
+    expect(shouldRetry(0, new ApiError("TRANSPORT", "down"))).toBe(true);
+    expect(shouldRetry(2, new Error("fetch failed"))).toBe(true);
+    expect(shouldRetry(3, new ApiError("TRANSPORT", "down"))).toBe(false);
+    for (const code of ["NOT_IMPLEMENTED", "VALIDATION", "NOT_FOUND", "INTERNAL"] as const) {
+      expect(shouldRetry(0, new ApiError(code, "x"))).toBe(false);
+    }
   });
 });
