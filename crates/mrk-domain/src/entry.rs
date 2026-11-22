@@ -241,16 +241,71 @@ impl JournalEntry {
     }
 }
 
-/// Fails when the entry is locked: any of its legs is reconciled (FR-AC-06).
-pub fn ensure_unlocked(_legs: &[StoredLeg]) -> Result<(), DomainError> {
-    unimplemented!("S2: ensure_unlocked")
+/// Fails when the entry is locked: any of its legs is reconciled (FR-AC-06; the lock is
+/// derived from the legs, docs/03). Core calls it before deleting an entry or editing its
+/// header; `plan_update` calls it when a leg would change.
+pub fn ensure_unlocked(legs: &[StoredLeg]) -> Result<(), DomainError> {
+    match legs
+        .iter()
+        .find(|l| l.status == Some(LegStatus::Reconciled))
+    {
+        Some(l) => Err(DomainError::ReconciledEntryLocked {
+            posting_id: l.id.clone(),
+        }),
+        None => Ok(()),
+    }
 }
 
-/// Plans rewriting `existing` as `new`, keeping both posting ids.
+/// Plans rewriting `existing` as `new`, keeping both posting ids (design Q6): each stored leg
+/// keeps its role, so a type change converts the counter leg in place and no leg is dropped
+/// or added. The new entry is validated first; an edit of a locked entry is refused.
 pub fn plan_update(
-    _existing: &[StoredLeg],
-    _new: &NewTx,
-    _ctx: &LedgerContext,
+    existing: &[StoredLeg],
+    new: &NewTx,
+    ctx: &LedgerContext,
 ) -> Result<UpdatePlan, DomainError> {
-    unimplemented!("S2: plan_update")
+    let entry = new.expand()?;
+    entry.validate(ctx)?;
+    let (account, counter) = roles(existing)?;
+    let account_leg = rewrite(account, &entry.account_leg);
+    let counter_leg = rewrite(counter, &entry.counter_leg);
+    if !(account_leg.changes.is_empty() && counter_leg.changes.is_empty()) {
+        ensure_unlocked(existing)?;
+    }
+    Ok(UpdatePlan {
+        entry,
+        account_leg,
+        counter_leg,
+    })
+}
+
+/// Splits a stored two-leg entry into (account leg, counter leg). The account leg is the only
+/// account leg or, for a transfer, the one money leaves (negative).
+fn roles(legs: &[StoredLeg]) -> Result<(&StoredLeg, &StoredLeg), DomainError> {
+    let [a, b] = legs else {
+        return Err(DomainError::UnsupportedEntryShape);
+    };
+    let is_account = |l: &StoredLeg| matches!(l.posting.leg, Leg::Account(_));
+    match (is_account(a), is_account(b)) {
+        (true, false) => Ok((a, b)),
+        (false, true) => Ok((b, a)),
+        (true, true) if a.posting.amount.minor < 0 && b.posting.amount.minor > 0 => Ok((a, b)),
+        (true, true) if b.posting.amount.minor < 0 && a.posting.amount.minor > 0 => Ok((b, a)),
+        _ => Err(DomainError::UnsupportedEntryShape),
+    }
+}
+
+fn rewrite(stored: &StoredLeg, posting: &Posting) -> LegUpdate {
+    let mut changes = Vec::new();
+    if stored.posting.leg != posting.leg {
+        changes.push(LegField::Target);
+    }
+    if stored.posting.amount != posting.amount {
+        changes.push(LegField::Amount);
+    }
+    LegUpdate {
+        id: stored.id.clone(),
+        posting: posting.clone(),
+        changes,
+    }
 }
