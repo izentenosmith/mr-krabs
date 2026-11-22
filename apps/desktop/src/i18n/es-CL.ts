@@ -31,6 +31,9 @@ export const esCL = {
     retry: "Reintentar",
     transactions: "Transacciones",
   },
+  language: {
+    label: "Idioma",
+  },
   onboarding: {
     title: "Te damos la bienvenida a Mr Krabs",
     description: "Crea tu hogar para empezar. Todo queda en este dispositivo.",

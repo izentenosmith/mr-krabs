@@ -35,6 +35,9 @@ export const en: Messages<typeof esCL> = {
     retry: "Retry",
     transactions: "Transactions",
   },
+  language: {
+    label: "Language",
+  },
   onboarding: {
     title: "Welcome to Mr Krabs",
     description: "Create your household to begin. Everything stays on this device.",

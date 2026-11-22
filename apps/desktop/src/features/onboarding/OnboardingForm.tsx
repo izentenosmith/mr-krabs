@@ -9,6 +9,7 @@ import { controlClass, Field } from "@/components/form/Field";
 import { FormError } from "@/components/form/FormError";
 import { applyServerErrors, fieldMessage } from "@/lib/api-errors";
 import { CURRENCIES } from "@/lib/currencies";
+import { LanguageToggle } from "@/features/shell/LanguageToggle";
 
 const required = (s: string) => s.trim().length > 0;
 
@@ -52,6 +53,7 @@ export function OnboardingForm({ onSubmit }: OnboardingFormProps) {
 
   return (
     <div className="bg-background flex min-h-screen items-center justify-center p-8">
+      <LanguageToggle className="fixed top-4 right-4" />
       <div className="bg-card text-card-foreground w-full max-w-md rounded-lg border p-6">
         <img src="/favicon.png" alt="" className="mb-4 size-10" />
         <h1 className="text-xl font-semibold">{t("onboarding.title")}</h1>
