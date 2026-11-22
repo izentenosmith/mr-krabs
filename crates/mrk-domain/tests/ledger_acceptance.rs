@@ -573,3 +573,47 @@ fn abuse_overflow_is_an_error_not_a_panic() {
     // Contrast: i64::MAX alone is representable.
     assert!(account_balances(&rows[..1], "2026-11-30").is_ok());
 }
+
+// ---- Remediation (tyr-verdict iteration 1) ------------------------------------------------
+
+#[test]
+fn f2_validate_rejects_wrong_leg_kinds_for_the_type() {
+    let wrong = [
+        // A transfer's counter leg must be an account.
+        JournalEntry {
+            tx_type: TxType::Transfer,
+            account_leg: Posting::account("checking", clp(-1_000)),
+            counter_leg: Posting::fx(clp(1_000)),
+        },
+        // An expense's account leg must be an account.
+        JournalEntry {
+            tx_type: TxType::Expense,
+            account_leg: Posting::fx(clp(-1_000)),
+            counter_leg: Posting::category("supermercado", clp(1_000)),
+        },
+        // An opening balance's counter leg must be FX (ADR-0011).
+        JournalEntry {
+            tx_type: TxType::OpeningBalance,
+            account_leg: Posting::account("checking", clp(5)),
+            counter_leg: Posting::account("savings", clp(-5)),
+        },
+    ];
+    for entry in wrong {
+        assert_eq!(
+            entry.validate(&ctx()),
+            Err(DomainError::LegKindMismatch {
+                declared: entry.tx_type
+            }),
+            "{entry:?}"
+        );
+    }
+    // Contrast: every expansion has the right kinds and validates.
+    for tx in [
+        expense("checking", "supermercado", clp(1)),
+        income("checking", "sueldo", clp(1)),
+        transfer("checking", "savings", clp(1)),
+        opening("checking", clp(1)),
+    ] {
+        assert_eq!(tx.expand().unwrap().validate(&ctx()), Ok(()));
+    }
+}

@@ -200,14 +200,26 @@ impl TxType {
 }
 
 impl JournalEntry {
+    /// The account leg is an account; the counter leg is the kind the type needs.
+    fn legs_fit_type(&self) -> bool {
+        let counter_fits = match (self.tx_type, &self.counter_leg.leg) {
+            (TxType::Expense | TxType::Income, Leg::Category(_)) => true,
+            (TxType::Transfer, Leg::Account(_)) => true,
+            (TxType::OpeningBalance, Leg::FxTrading) => true,
+            _ => false,
+        };
+        matches!(self.account_leg.leg, Leg::Account(_)) && counter_fits
+    }
+
     /// The legs, account leg first.
     pub fn postings(&self) -> [Posting; 2] {
         [self.account_leg.clone(), self.counter_leg.clone()]
     }
 
     /// Checks the entry against the accounts it posts to: every account leg's account exists,
-    /// is not archived and has the leg's currency; the entry balances per currency; and the
-    /// legs classify as the declared type (a transfer carries no category leg, FR-TX-02).
+    /// is not archived and has the leg's currency; the entry balances per currency; the legs
+    /// classify as the declared type (a transfer carries no category leg, FR-TX-02); and each
+    /// leg is the kind its role needs for that type.
     pub fn validate(&self, ctx: &LedgerContext) -> Result<(), DomainError> {
         let postings = self.postings();
         for p in &postings {
@@ -235,6 +247,11 @@ impl JournalEntry {
             return Err(DomainError::TypeMismatch {
                 declared: self.tx_type,
                 derived,
+            });
+        }
+        if !self.legs_fit_type() {
+            return Err(DomainError::LegKindMismatch {
+                declared: self.tx_type,
             });
         }
         Ok(())

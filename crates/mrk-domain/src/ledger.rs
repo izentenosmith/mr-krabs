@@ -83,6 +83,11 @@ pub enum DomainError {
         declared: TxType,
         derived: EntryKind,
     },
+    /// A leg is not the kind its role needs for the declared type: the account leg is always an
+    /// account; the counter leg is a category (expense, income), an account (transfer) or FX
+    /// (opening balance, ADR-0011).
+    #[error("a {declared:?} entry has a leg of the wrong kind")]
+    LegKindMismatch { declared: TxType },
     #[error("the amount must be greater than zero")]
     NonPositiveAmount,
     #[error("a transfer needs two different accounts")]
