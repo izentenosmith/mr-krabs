@@ -91,4 +91,27 @@ describe("TxDialog", () => {
     expect(await d.findByText("Revisa este campo")).toBeInTheDocument();
     expect(d.queryByText("Transacciones")).not.toBeInTheDocument();
   });
+
+  it("NOT_IMPLEMENTED from a save shows the muted not-yet-available line, not an error (F18)", async () => {
+    const onSubmit = vi.fn().mockRejectedValue(new ApiError("NOT_IMPLEMENTED", "tx_create"));
+    const { d } = renderDialog({ onSubmit });
+    fireEvent.change(d.getByLabelText("Cuenta"), { target: { value: "a1" } });
+    fireEvent.change(d.getByLabelText("Categoría"), { target: { value: "c1" } });
+    fireEvent.change(d.getByLabelText("Monto"), { target: { value: "1" } });
+    fireEvent.click(d.getByRole("button", { name: "Guardar" }));
+    const status = await d.findByRole("status");
+    expect(status).toHaveTextContent("Esta función llega en una próxima versión.");
+    expect(status.className).not.toContain("text-destructive");
+    expect(d.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("a whitespace-only amount is blocked as required (F24)", async () => {
+    const { d, onSubmit } = renderDialog();
+    fireEvent.change(d.getByLabelText("Cuenta"), { target: { value: "a1" } });
+    fireEvent.change(d.getByLabelText("Categoría"), { target: { value: "c1" } });
+    fireEvent.change(d.getByLabelText("Monto"), { target: { value: "   " } });
+    fireEvent.click(d.getByRole("button", { name: "Guardar" }));
+    await waitFor(() => expect(d.getByLabelText("Monto")).toHaveAttribute("aria-invalid", "true"));
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
 });

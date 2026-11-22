@@ -287,3 +287,14 @@ describe("TransactionsPage filter", () => {
     expect(api.tx.list.mock.calls[2]?.[0]?.accountId).toBeUndefined();
   });
 });
+
+describe("TransactionsPage loading", () => {
+  it("shows Cargando… with aria-busy while the first page loads (F19)", async () => {
+    api.account.list.mockResolvedValue([]);
+    api.tx.list.mockReturnValue(new Promise(() => {}));
+    renderPage();
+    const loading = await screen.findByText("Cargando…");
+    expect(loading).toHaveAttribute("aria-busy", "true");
+    expect(screen.queryByText("Aún no hay transacciones")).not.toBeInTheDocument();
+  });
+});
