@@ -68,18 +68,24 @@ async function languageGroup(name: "Idioma" | "Language") {
   return within(await screen.findByRole("radiogroup", { name }));
 }
 
-/** Every api function that writes. Reads (bootstrap, lists, gets) may be called. */
+const READS = new Set([
+  "app.health",
+  "app.bootstrap",
+  "settings.get",
+  "money.parse",
+  "account.list",
+  "account.get",
+  "tx.get",
+  "tx.list",
+]);
+
+/** Every mocked api function that is not a known read, so a new write command is covered. */
 function writes() {
-  return [
-    api.household.create,
-    api.account.create,
-    api.account.update,
-    api.account.archive,
-    api.tx.create,
-    api.tx.update,
-    api.tx.delete,
-    api.tx.restore,
-  ];
+  return Object.entries(api).flatMap(([group, fns]) =>
+    Object.entries(fns)
+      .filter(([name]) => !READS.has(`${group}.${name}`))
+      .map(([name, fn]) => ({ name: `${group}.${name}`, fn })),
+  );
 }
 
 describe("S9 language toggle — sidebar", () => {
@@ -181,7 +187,8 @@ describe("S9 language toggle — sidebar", () => {
     fireEvent.click((await languageGroup("Language")).getByRole("radio", { name: "Español" }));
     await screen.findByRole("region", { name: "Cuentas" });
 
-    for (const fn of writes()) expect(fn).not.toHaveBeenCalled();
+    const called = writes().filter(({ fn }) => fn.mock.calls.length > 0).map(({ name }) => name);
+    expect(called).toEqual([]);
     expect(localStorage.getItem(KEY)).toBe("es-CL");
   });
 });
