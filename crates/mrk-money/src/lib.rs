@@ -220,7 +220,8 @@ impl Money {
 ///   marker of a built-in currency: its symbol (`$`, `US$`, `€`, `UF`) or ISO code (`CLP`),
 ///   in any ASCII case. An ISO code may instead follow the number (`27.990 CLP`).
 /// * Never rounds: more decimals than the currency allows is an error.
-pub fn parse_es_cl(input: &str, minor_units: u8) -> Result<i64, MoneyError> {
+pub fn parse_es_cl(input: &str, currency: Currency) -> Result<i64, MoneyError> {
+    let minor_units = currency.minor_units;
     let invalid = || MoneyError::InvalidAmount(input.to_owned());
     let mut s: String = input.chars().filter(|c| !c.is_whitespace()).collect();
 
@@ -411,37 +412,37 @@ mod tests {
 
     #[test]
     fn parse_clp() {
-        assert_eq!(parse_es_cl("1.234.567", 0), Ok(1_234_567));
-        assert_eq!(parse_es_cl("$1.234.567", 0), Ok(1_234_567));
-        assert_eq!(parse_es_cl("-$45.990", 0), Ok(-45_990));
-        assert_eq!(parse_es_cl("(45.990)", 0), Ok(-45_990));
-        assert_eq!(parse_es_cl(" 500 ", 0), Ok(500));
-        assert_eq!(parse_es_cl("1234567", 0), Ok(1_234_567));
-        assert_eq!(parse_es_cl("CLP 27.990", 0), Ok(27_990));
+        assert_eq!(parse_es_cl("1.234.567", Currency::CLP), Ok(1_234_567));
+        assert_eq!(parse_es_cl("$1.234.567", Currency::CLP), Ok(1_234_567));
+        assert_eq!(parse_es_cl("-$45.990", Currency::CLP), Ok(-45_990));
+        assert_eq!(parse_es_cl("(45.990)", Currency::CLP), Ok(-45_990));
+        assert_eq!(parse_es_cl(" 500 ", Currency::CLP), Ok(500));
+        assert_eq!(parse_es_cl("1234567", Currency::CLP), Ok(1_234_567));
+        assert_eq!(parse_es_cl("CLP 27.990", Currency::CLP), Ok(27_990));
     }
 
     #[test]
     fn parse_with_decimals() {
-        assert_eq!(parse_es_cl("12,5", 2), Ok(1_250));
-        assert_eq!(parse_es_cl("US$1.234,56", 2), Ok(123_456));
-        assert_eq!(parse_es_cl("UF 1,2345", 4), Ok(12_345));
+        assert_eq!(parse_es_cl("12,5", Currency::USD), Ok(1_250));
+        assert_eq!(parse_es_cl("US$1.234,56", Currency::USD), Ok(123_456));
+        assert_eq!(parse_es_cl("UF 1,2345", Currency::CLF), Ok(12_345));
     }
 
     /// X-9: Rust's own EUR display string must parse back.
     #[test]
     fn parse_eur_display() {
-        assert_eq!(parse_es_cl("€1.234,56", 2), Ok(123_456));
-        assert_eq!(parse_es_cl("-€1.234,56", 2), Ok(-123_456));
-        assert_eq!(parse_es_cl("(€1.234,56)", 2), Ok(-123_456));
-        assert_eq!(parse_es_cl("EUR 1.234,56", 2), Ok(123_456));
-        assert_eq!(parse_es_cl("1.234,56 EUR", 2), Ok(123_456));
+        assert_eq!(parse_es_cl("€1.234,56", Currency::EUR), Ok(123_456));
+        assert_eq!(parse_es_cl("-€1.234,56", Currency::EUR), Ok(-123_456));
+        assert_eq!(parse_es_cl("(€1.234,56)", Currency::EUR), Ok(-123_456));
+        assert_eq!(parse_es_cl("EUR 1.234,56", Currency::EUR), Ok(123_456));
+        assert_eq!(parse_es_cl("1.234,56 EUR", Currency::EUR), Ok(123_456));
     }
 
     #[test]
     fn parse_accepts_markers_case_insensitively() {
-        assert_eq!(parse_es_cl("clp 27.990", 0), Ok(27_990));
-        assert_eq!(parse_es_cl("uf 1,5", 4), Ok(15_000));
-        assert_eq!(parse_es_cl("27.990 CLP", 0), Ok(27_990));
+        assert_eq!(parse_es_cl("clp 27.990", Currency::CLP), Ok(27_990));
+        assert_eq!(parse_es_cl("uf 1,5", Currency::CLF), Ok(15_000));
+        assert_eq!(parse_es_cl("27.990 CLP", Currency::CLP), Ok(27_990));
     }
 
     #[test]
@@ -455,22 +456,46 @@ mod tests {
             "£5", "é5", "5é", "5€",
             "€5€", // other non-ASCII: rejected, never a char-boundary panic
         ] {
-            assert!(parse_es_cl(bad, 2).is_err(), "{bad:?} should be rejected");
+            for c in Currency::BUILT_IN {
+                assert!(
+                    parse_es_cl(bad, c).is_err(),
+                    "{bad:?} should be rejected for {}",
+                    c.code
+                );
+            }
         }
+    }
+
+    /// X-12: a marker must name the currency being parsed; no marker is always fine.
+    #[test]
+    fn parse_requires_the_target_currencys_marker() {
+        assert!(matches!(
+            parse_es_cl("€10", Currency::CLP),
+            Err(MoneyError::InvalidAmount(_))
+        ));
+        assert!(parse_es_cl("US$10", Currency::CLP).is_err());
+        assert!(parse_es_cl("10 EUR", Currency::CLP).is_err());
+        assert!(parse_es_cl("$10", Currency::USD).is_err());
+        assert!(parse_es_cl("UF 1", Currency::CLP).is_err());
+        assert_eq!(parse_es_cl("$10", Currency::CLP), Ok(10));
+        assert_eq!(parse_es_cl("US$10", Currency::USD), Ok(1_000));
+        assert_eq!(parse_es_cl("USD 10", Currency::USD), Ok(1_000));
+        assert_eq!(parse_es_cl("10", Currency::CLP), Ok(10));
+        assert_eq!(parse_es_cl("10", Currency::EUR), Ok(1_000));
     }
 
     #[test]
     fn parse_reads_the_i64_edges() {
         assert_eq!(
-            parse_es_cl(&format_es_cl(i64::MIN, 0, "$"), 0),
+            parse_es_cl(&format_es_cl(i64::MIN, 0, "$"), Currency::CLP),
             Ok(i64::MIN)
         );
         assert_eq!(
-            parse_es_cl(&format_es_cl(i64::MAX, 0, "$"), 0),
+            parse_es_cl(&format_es_cl(i64::MAX, 0, "$"), Currency::CLP),
             Ok(i64::MAX)
         );
         assert_eq!(
-            parse_es_cl("9.223.372.036.854.775.808", 0),
+            parse_es_cl("9.223.372.036.854.775.808", Currency::CLP),
             Err(MoneyError::Overflow)
         );
     }
@@ -478,14 +503,14 @@ mod tests {
     #[test]
     fn parse_rejects_bad_input() {
         assert_eq!(
-            parse_es_cl("1.234,5", 0),
+            parse_es_cl("1.234,5", Currency::CLP),
             Err(MoneyError::TooManyDecimals { allowed: 0 })
         );
-        assert!(parse_es_cl("1.23", 0).is_err()); // bad grouping
-        assert!(parse_es_cl("1,2,3", 2).is_err());
-        assert!(parse_es_cl("abc", 0).is_err());
-        assert!(parse_es_cl("", 0).is_err());
-        assert!(parse_es_cl("12a3", 0).is_err());
+        assert!(parse_es_cl("1.23", Currency::CLP).is_err()); // bad grouping
+        assert!(parse_es_cl("1,2,3", Currency::USD).is_err());
+        assert!(parse_es_cl("abc", Currency::CLP).is_err());
+        assert!(parse_es_cl("", Currency::CLP).is_err());
+        assert!(parse_es_cl("12a3", Currency::CLP).is_err());
     }
 
     #[test]
@@ -498,7 +523,7 @@ mod tests {
         assert_eq!(format_es_cl(12_345, 4, "UF "), "UF 1,2345");
         for v in [0, 7, 999, 1_000, 1_234_567, -98_765] {
             let s = format_es_cl(v, 0, "$");
-            assert_eq!(parse_es_cl(&s, 0), Ok(v), "{s}");
+            assert_eq!(parse_es_cl(&s, Currency::CLP), Ok(v), "{s}");
         }
     }
 
@@ -540,16 +565,6 @@ mod properties {
             prop_assert!(max - min <= 1);
         }
 
-        /// Whatever Rust displays, Rust can read back exactly.
-        #[test]
-        fn format_then_parse_round_trips(
-            minor in -1_000_000_000_000_000i64..1_000_000_000_000_000,
-            units in prop::sample::select(vec![0u8, 2, 4]),
-        ) {
-            let s = format_es_cl(minor, units, "$");
-            prop_assert_eq!(parse_es_cl(&s, units), Ok(minor), "{}", s);
-        }
-
         /// X-8/X-9: the UI re-sends `MoneyDto.display`, so every built-in currency's own
         /// display string must parse back to the same amount, across the whole `i64` range.
         #[test]
@@ -558,7 +573,20 @@ mod properties {
             currency in prop::sample::select(Currency::BUILT_IN.to_vec()),
         ) {
             let s = format_es_cl(minor, currency.minor_units, currency.symbol);
-            prop_assert_eq!(parse_es_cl(&s, currency.minor_units), Ok(minor), "{}", s);
+            prop_assert_eq!(parse_es_cl(&s, currency), Ok(minor), "{}", s);
+        }
+
+        /// X-12: another currency's display string never parses for the target currency,
+        /// so no marker of one built-in currency is consumed as another's.
+        #[test]
+        fn another_currencys_display_is_rejected(
+            minor in any::<i64>(),
+            shown in prop::sample::select(Currency::BUILT_IN.to_vec()),
+            target in prop::sample::select(Currency::BUILT_IN.to_vec()),
+        ) {
+            prop_assume!(shown != target);
+            let s = format_es_cl(minor, shown.minor_units, shown.symbol);
+            prop_assert!(parse_es_cl(&s, target).is_err(), "{} parsed as {}", s, target.code);
         }
     }
 }
