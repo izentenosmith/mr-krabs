@@ -48,8 +48,8 @@ compose.yaml       back + front + db (+ test profile)
 ```bash
 # Docker (default dev environment)
 docker compose up --build                            # UI :5173, API :7878, DB browser :8081
-docker compose --profile test run --rm test-back     # Rust tests
-docker compose --profile test run --rm test-front    # lint + typecheck + vitest
+docker compose --profile test run --rm test-back     # guardrails + fmt + clippy + Rust tests
+docker compose --profile test run --rm test-front    # lint + typecheck + vitest + build
 
 # Native
 cargo fmt --all
