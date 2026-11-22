@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Plus } from "lucide-react";
-import { api, type NewTxInput } from "@mr-krabs/api-client";
+import { api, type NewTxInput, type TxDetailDto, type TxRowDto } from "@mr-krabs/api-client";
 
 import { Button } from "@/components/ui/button";
 
@@ -28,7 +28,7 @@ export interface TransactionsPageProps {
 
 const PAGE_SIZE = 100; // design Q8
 
-type DialogState = { mode: "create" } | null;
+type DialogState = { mode: "create" } | { mode: "edit"; detail: TxDetailDto } | null;
 
 export function TransactionsPage({ accountId, categories }: TransactionsPageProps) {
   const { t } = useTranslation();
@@ -55,8 +55,17 @@ export function TransactionsPage({ accountId, categories }: TransactionsPageProp
       queryClient.invalidateQueries({ queryKey: ["account"] }),
     ]);
 
+  const open = async (row: TxRowDto) => {
+    const detail = await queryClient.fetchQuery({
+      queryKey: ["tx", "detail", row.id],
+      queryFn: () => api.tx.get(row.id),
+    });
+    setDialog({ mode: "edit", detail });
+  };
+
   const save = async (input: NewTxInput) => {
-    await api.tx.create(input);
+    if (dialog?.mode === "edit") await api.tx.update(dialog.detail.id, input);
+    else await api.tx.create(input);
     setDialog(null);
     void refresh();
   };
@@ -75,13 +84,14 @@ export function TransactionsPage({ accountId, categories }: TransactionsPageProp
         hasMore={list.hasNextPage}
         loadingMore={list.isFetchingNextPage}
         onLoadMore={() => void list.fetchNextPage()}
-        onOpen={() => {}}
+        onOpen={(row) => void open(row)}
       />
       {dialog && (
         <TxDialog
           open
           onOpenChange={(open) => !open && setDialog(null)}
           mode={dialog.mode}
+          initial={dialog.mode === "edit" ? dialog.detail : undefined}
           accounts={accountOptions}
           categories={categories}
           onSubmit={save}

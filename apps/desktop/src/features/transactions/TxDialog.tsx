@@ -41,16 +41,30 @@ function today() {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-function defaults(): FormValues {
+function defaults(initial?: TxDetailDto): FormValues {
+  if (!initial || initial.kind === "opening_balance") {
+    return {
+      type: "expense",
+      accountId: "",
+      categoryId: "",
+      toAccountId: "",
+      amount: "",
+      date: today(),
+      description: "",
+      memo: "",
+    };
+  }
   return {
-    type: "expense",
-    accountId: "",
-    categoryId: "",
-    toAccountId: "",
-    amount: "",
-    date: today(),
-    description: "",
-    memo: "",
+    type: initial.kind,
+    accountId: initial.accountId,
+    categoryId: initial.categoryId ?? "",
+    toAccountId: initial.toAccountId ?? "",
+    // The detail amount is positive and in Rust's es-CL text, which Rust parses back
+    // (never the row's signed amount, X-7).
+    amount: initial.amount.display,
+    date: initial.date,
+    description: initial.description,
+    memo: initial.memo,
   };
 }
 
@@ -125,10 +139,18 @@ function invalid(id: string, error: string | undefined) {
 }
 
 /** Add/edit dialog for expense, income and transfer. Presentational: input out, errors in. */
-export function TxDialog({ open, onOpenChange, mode, accounts, categories, onSubmit }: TxDialogProps) {
+export function TxDialog({
+  open,
+  onOpenChange,
+  mode,
+  initial,
+  accounts,
+  categories,
+  onSubmit,
+}: TxDialogProps) {
   const { t, i18n } = useTranslation();
   const { register, handleSubmit, watch, setError, formState } = useForm<FormValues>({
-    defaultValues: defaults(),
+    defaultValues: defaults(initial),
   });
   // Messages are i18n keys (ours or the server's); an unknown key gets the generic text.
   const message = (errors: FieldErrors<FormValues>, field: TxField) => {
