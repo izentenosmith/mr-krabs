@@ -101,7 +101,10 @@ services:
       - -ec
       - |
         bash tools/check-no-sql-logic.sh
-        for f in crates/mrk-store/migrations/*.sql; do sqlite3 :memory: < "$$f"; done
+        db="$$(mktemp)"
+        for f in crates/mrk-store/migrations/*.sql; do sqlite3 -bail "$$db" < "$$f"; done
+        test -z "$$(sqlite3 "$$db" 'PRAGMA foreign_key_check;')"
+        test "$$(sqlite3 "$$db" 'PRAGMA integrity_check;')" = ok
         cargo fmt --all --check
         cargo clippy --locked --workspace --exclude mr-krabs-desktop --all-targets -- -D warnings
         cargo test --locked --workspace --exclude mr-krabs-desktop
