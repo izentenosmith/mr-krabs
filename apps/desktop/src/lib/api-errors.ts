@@ -57,3 +57,9 @@ export function applyServerErrors<T extends FieldValues>(
 export function shouldRetry(failureCount: number, error: unknown): boolean {
   return failureCount < 3 && ApiError.from(error).code === "TRANSPORT";
 }
+
+/** How a failed load shows: not yet available (NOT_IMPLEMENTED) or an error with its code. */
+export function failureState(error: unknown): { status: "notAvailable" } | { status: "error"; code: string } {
+  const { code } = ApiError.from(error);
+  return code === "NOT_IMPLEMENTED" ? { status: "notAvailable" } : { status: "error", code };
+}

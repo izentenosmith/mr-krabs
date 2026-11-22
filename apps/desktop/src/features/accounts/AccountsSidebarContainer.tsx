@@ -1,9 +1,14 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ApiError, api, type AccountInput } from "@mr-krabs/api-client";
+import {
+  api,
+  type AccountDetailDto,
+  type AccountInput,
+  type AccountSummaryDto,
+} from "@mr-krabs/api-client";
 
 import { useBootstrap } from "@/features/shell/bootstrap";
-import { isNotImplemented } from "@/lib/api-errors";
+import { failureState } from "@/lib/api-errors";
 
 import { AccountDialog, type AccountDialogState } from "./AccountDialog";
 import { AccountsSidebar, type SidebarState } from "./AccountsSidebar";
@@ -75,27 +80,16 @@ export function AccountsSidebarContainer() {
   );
 }
 
-type QueryLike<T> = { isPending: boolean; isError: boolean; error: unknown; data: T | undefined };
+type Load<T> = { isPending: boolean; isError: boolean; error: unknown; data: T | undefined };
 
-function sidebarState(q: QueryLike<SidebarAccounts>): SidebarState {
+function sidebarState(q: Load<AccountSummaryDto[]>): SidebarState {
   if (q.isPending) return { status: "loading" };
-  if (q.isError) {
-    return isNotImplemented(q.error)
-      ? { status: "notAvailable" }
-      : { status: "error", code: ApiError.from(q.error).code };
-  }
+  if (q.isError) return failureState(q.error);
   return { status: "ready", accounts: q.data ?? [] };
 }
 
-type SidebarAccounts = Awaited<ReturnType<typeof api.account.list>>;
-type Detail = Awaited<ReturnType<typeof api.account.get>>;
-
-function dialogState(q: QueryLike<Detail>): AccountDialogState {
+function dialogState(q: Load<AccountDetailDto>): AccountDialogState {
   if (q.isPending) return { mode: "edit", status: "loading" };
-  if (q.isError) {
-    return isNotImplemented(q.error)
-      ? { mode: "edit", status: "notAvailable" }
-      : { mode: "edit", status: "error", code: ApiError.from(q.error).code };
-  }
+  if (q.isError) return { mode: "edit", ...failureState(q.error) };
   return { mode: "edit", status: "ready", detail: q.data! };
 }
