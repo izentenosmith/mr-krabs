@@ -261,7 +261,12 @@ fn c02_household_create_logs_household_and_member_only_and_seeds_unlogged_defaul
     assert_eq!(
         rows,
         vec![
-            ("household", hh["id"].as_str().unwrap(), "upsert", "household"),
+            (
+                "household",
+                hh["id"].as_str().unwrap(),
+                "upsert",
+                "household"
+            ),
             ("member", me.as_str().unwrap(), "upsert", "household"),
         ]
     );
@@ -297,10 +302,7 @@ fn c04_before_onboarding_bootstrap_is_empty_and_settings_and_accounts_are_not_fo
     assert_eq!(b["me"], Value::Null);
     assert_eq!(b["settings"], Value::Null);
     assert!(b["schemaVersion"].as_u64().unwrap() >= 3);
-    assert_eq!(
-        env.err("settings_get", json!({})).code,
-        ErrorCode::NotFound
-    );
+    assert_eq!(env.err("settings_get", json!({})).code, ErrorCode::NotFound);
     assert_eq!(
         env.err("account_create", json!({ "input": checking(None) }))
             .code,
@@ -440,7 +442,11 @@ fn c09_account_list_filters_by_view_shows_zero_seed_balances_and_is_ordered() {
     personal["scope"] = json!("personal");
     let personal = env.create_account(personal)["id"].clone();
 
-    let ids = |rows: &[Value]| rows.iter().map(|s| s["account"]["id"].clone()).collect::<Vec<_>>();
+    let ids = |rows: &[Value]| {
+        rows.iter()
+            .map(|s| s["account"]["id"].clone())
+            .collect::<Vec<_>>()
+    };
     let combined = env.list("combined", false);
     let p = env.list("personal", false);
     let h = env.list("household", false);
@@ -526,7 +532,10 @@ fn c11_opening_balance_edit_rewrites_in_place_removal_soft_deletes_and_readding_
         "2026-11-02"
     );
 
-    env.ok("account_update", json!({ "id": id, "input": checking(None) }));
+    env.ok(
+        "account_update",
+        json!({ "id": id, "input": checking(None) }),
+    );
     assert_eq!(
         env.int(&format!(
             "SELECT deleted FROM journal_entry WHERE id = '{entry}'"
@@ -552,9 +561,9 @@ fn c11_opening_balance_edit_rewrites_in_place_removal_soft_deletes_and_readding_
     assert_eq!(env.opening_entry(&id), entry);
     assert_eq!(env.posting_ids(&entry), ids);
     assert_eq!(
-        env.int(&format!(
+        env.int(
             "SELECT count(*) FROM journal_entry WHERE kind = 'opening_balance' AND deleted = 0"
-        )),
+        ),
         1
     );
     assert_eq!(env.summary(&id).unwrap()["balance"]["minor"], "100000");
@@ -618,7 +627,10 @@ fn c13_currency_change_without_other_postings_moves_opening_balance_legs() {
         ["USD:50000"]
     );
     let b = &env.summary(&id).unwrap()["balance"];
-    assert_eq!((&b["minor"], &b["currency"]), (&json!("50000"), &json!("USD")));
+    assert_eq!(
+        (&b["minor"], &b["currency"]),
+        (&json!("50000"), &json!("USD"))
+    );
     assert_eq!(env.int("SELECT count(*) FROM pragma_foreign_key_check"), 0);
 }
 
@@ -635,7 +647,10 @@ fn c14_category_tree_by_kind_returns_the_nested_seeded_tree() {
     assert!(nodes.iter().all(|n| n["kind"] == "expense"));
     let food = seed_id("expense.food");
     let roots = tree.as_array().unwrap();
-    let food_node = roots.iter().find(|n| n["id"] == food.as_str()).expect("root");
+    let food_node = roots
+        .iter()
+        .find(|n| n["id"] == food.as_str())
+        .expect("root");
     assert_eq!(food_node["parentId"], Value::Null);
     assert!(!food_node["name"].as_str().unwrap().is_empty());
     let supermarket = seed_id("expense.food.supermarket");
@@ -725,7 +740,11 @@ fn c17_edge_other_postings_freeze_currency_and_opening_balance_but_not_an_unchan
         let before = env.state();
         let usd = json!({ "name": "Cuenta corriente", "kind": "checking", "currency": "USD" });
         let e = env.err("account_update", json!({ "id": id, "input": usd }));
-        assert_eq!(e.code, ErrorCode::CurrencyMismatch, "deleted={deleted}: {e}");
+        assert_eq!(
+            e.code,
+            ErrorCode::CurrencyMismatch,
+            "deleted={deleted}: {e}"
+        );
         assert!(fields(&e).contains_key("currency"), "{e:?}");
         assert_eq!(env.state(), before);
 
@@ -755,10 +774,26 @@ fn c18_edge_household_create_validates_names_and_currency_and_writes_nothing() {
     let before = env.state();
     let long = "x".repeat(101);
     let cases = [
-        (json!({ "name": " ", "myName": "Yo", "baseCurrency": "CLP" }), "name", "errors.field.required"),
-        (json!({ "name": "Casa", "myName": "", "baseCurrency": "CLP" }), "myName", "errors.field.required"),
-        (json!({ "name": long, "myName": "Yo", "baseCurrency": "CLP" }), "name", "errors.field.tooLong"),
-        (json!({ "name": "Casa", "myName": "Yo", "baseCurrency": "XYZ" }), "baseCurrency", "errors.field.unsupportedCurrency"),
+        (
+            json!({ "name": " ", "myName": "Yo", "baseCurrency": "CLP" }),
+            "name",
+            "errors.field.required",
+        ),
+        (
+            json!({ "name": "Casa", "myName": "", "baseCurrency": "CLP" }),
+            "myName",
+            "errors.field.required",
+        ),
+        (
+            json!({ "name": long, "myName": "Yo", "baseCurrency": "CLP" }),
+            "name",
+            "errors.field.tooLong",
+        ),
+        (
+            json!({ "name": "Casa", "myName": "Yo", "baseCurrency": "XYZ" }),
+            "baseCurrency",
+            "errors.field.unsupportedCurrency",
+        ),
     ];
     for (input, field, key) in cases {
         let e = env.err("household_create", json!({ "input": input }));
@@ -789,16 +824,31 @@ fn c19_edge_account_create_refuses_bad_opening_balance_and_visibility_and_writes
         "account_create",
         json!({ "input": checking(Some(("1.2.3", "2026-11-01"))) }),
     );
-    field_error(&e, ErrorCode::Validation, "openingBalance.amount", "errors.field.invalidAmount");
+    field_error(
+        &e,
+        ErrorCode::Validation,
+        "openingBalance.amount",
+        "errors.field.invalidAmount",
+    );
     let e = env.err(
         "account_create",
         json!({ "input": checking(Some(("500.000", "2026-02-30"))) }),
     );
-    field_error(&e, ErrorCode::Validation, "openingBalance.date", "errors.field.invalidDate");
+    field_error(
+        &e,
+        ErrorCode::Validation,
+        "openingBalance.date",
+        "errors.field.invalidDate",
+    );
     let mut private_household = checking(None);
     private_household["visibility"] = json!("private");
     let e = env.err("account_create", json!({ "input": private_household }));
-    field_error(&e, ErrorCode::Validation, "visibility", "errors.field.notAllowed");
+    field_error(
+        &e,
+        ErrorCode::Validation,
+        "visibility",
+        "errors.field.notAllowed",
+    );
     assert_eq!(env.state(), before);
 }
 
@@ -809,7 +859,10 @@ fn c20_edge_account_commands_refuse_non_uuid_ids_and_unknown_ids() {
     let calls = |id: &str| {
         vec![
             ("account_get", json!({ "id": id })),
-            ("account_update", json!({ "id": id, "input": checking(None) })),
+            (
+                "account_update",
+                json!({ "id": id, "input": checking(None) }),
+            ),
             ("account_archive", json!({ "id": id })),
         ]
     };
@@ -832,11 +885,27 @@ fn c21_abuse_full_card_numbers_and_oversized_text_are_refused_and_write_nothing(
         v
     };
     let cases = [
-        (with("numberMask", json!("4111 1111 1111 1111")), "numberMask", "errors.field.fullNumber"),
-        (with("numberMask", json!("•".repeat(21))), "numberMask", "errors.field.tooLong"),
-        (with("name", json!("n".repeat(101))), "name", "errors.field.tooLong"),
+        (
+            with("numberMask", json!("4111 1111 1111 1111")),
+            "numberMask",
+            "errors.field.fullNumber",
+        ),
+        (
+            with("numberMask", json!("•".repeat(21))),
+            "numberMask",
+            "errors.field.tooLong",
+        ),
+        (
+            with("name", json!("n".repeat(101))),
+            "name",
+            "errors.field.tooLong",
+        ),
         (with("name", json!("  ")), "name", "errors.field.required"),
-        (with("institution", json!("i".repeat(101))), "institution", "errors.field.tooLong"),
+        (
+            with("institution", json!("i".repeat(101))),
+            "institution",
+            "errors.field.tooLong",
+        ),
     ];
     for (input, field, key) in cases {
         let e = env.err("account_create", json!({ "input": input }));
@@ -857,7 +926,12 @@ fn c22_abuse_overflowing_amount_is_validation_not_a_panic() {
         "account_create",
         json!({ "input": checking(Some(("99.999.999.999.999.999.999", "2026-11-01"))) }),
     );
-    field_error(&e, ErrorCode::Validation, "openingBalance.amount", "errors.field.invalidAmount");
+    field_error(
+        &e,
+        ErrorCode::Validation,
+        "openingBalance.amount",
+        "errors.field.invalidAmount",
+    );
     assert_eq!(env.state(), before);
 }
 
@@ -876,7 +950,10 @@ fn c23_catalogue_only_tx_commands_are_still_not_implemented_and_malformed_args_a
         ("settings_get", json!({})),
         ("account_list", json!({ "query": { "view": "combined" } })),
         ("account_get", json!({ "id": account })),
-        ("account_update", json!({ "id": account, "input": checking(None) })),
+        (
+            "account_update",
+            json!({ "id": account, "input": checking(None) }),
+        ),
         ("account_archive", json!({ "id": account })),
         ("account_create", json!({ "input": checking(None) })),
         ("category_tree", json!({ "query": {} })),
@@ -894,13 +971,20 @@ fn c23_catalogue_only_tx_commands_are_still_not_implemented_and_malformed_args_a
         ("tx_restore", json!({ "id": uuid() })),
     ];
     for (name, args) in tx {
-        assert_eq!(env.err(name, args).code, ErrorCode::NotImplemented, "{name}");
+        assert_eq!(
+            env.err(name, args).code,
+            ErrorCode::NotImplemented,
+            "{name}"
+        );
     }
     for name in COMMANDS {
         if ["app_health", "app_bootstrap", "settings_get"].contains(name) {
             continue; // take no arguments
         }
-        let e = env.err(name, json!({ "id": 1, "input": { "type": "split" }, "query": 7 }));
+        let e = env.err(
+            name,
+            json!({ "id": 1, "input": { "type": "split" }, "query": 7 }),
+        );
         assert_eq!(e.code, ErrorCode::Validation, "{name}: {e}");
     }
 }
@@ -957,6 +1041,9 @@ fn c24_eur_opening_balance_resent_as_its_display_text_is_no_change() {
         .to_owned();
     assert_eq!(display, "€1.234,56");
     let logged = env.log_len();
-    env.ok("account_update", json!({ "id": id, "input": eur(&display) }));
+    env.ok(
+        "account_update",
+        json!({ "id": id, "input": eur(&display) }),
+    );
     assert_eq!(env.log_len(), logged);
 }

@@ -1922,6 +1922,7 @@ dependencies = [
  "specta-serde",
  "specta-typescript",
  "thiserror 2.0.21",
+ "tracing",
  "uuid",
 ]
 

@@ -300,6 +300,39 @@ pub struct OpeningBalanceInput {
     pub date: String,
 }
 
+// ───────────────────────────── categories ─────────────────────────────
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum CategoryKind {
+    Expense,
+    Income,
+}
+
+/// `category_tree` filter: one kind's tree, or both.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CategoryTreeQuery {
+    #[specta(optional)]
+    pub kind: Option<CategoryKind>,
+}
+
+/// One node of the live category tree (any depth): seeded and user categories, archived
+/// ones flagged, deleted and merged ones left out.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CategoryNodeDto {
+    pub id: String,
+    /// `null` at a root.
+    pub parent_id: Option<String>,
+    pub kind: CategoryKind,
+    pub name: String,
+    pub icon: Option<String>,
+    pub is_archived: bool,
+    pub sort_order: i32,
+    pub children: Vec<CategoryNodeDto>,
+}
+
 // ───────────────────────────── transactions ─────────────────────────────
 
 /// A new (or edited) two-leg transaction; core expands it into balanced postings (design Q1).

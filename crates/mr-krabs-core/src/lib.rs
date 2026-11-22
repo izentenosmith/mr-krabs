@@ -4,9 +4,13 @@
 //! Shells deserialize input, call [`App`] (directly or through [`commands::dispatch`]),
 //! and serialize the result — nothing else (ADR-0002, `docs/04-command-boundary.md`).
 
+mod accounts;
 pub mod api;
+mod categories;
 pub mod commands;
+mod household;
 pub mod seed;
+mod support;
 
 use std::path::{Path, PathBuf};
 
