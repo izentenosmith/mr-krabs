@@ -80,8 +80,8 @@ export function TransactionsPage({ accountId, onAccountIdChange }: TransactionsP
   const treesSettled = !expenseTree.isPending && !incomeTree.isPending;
   const categories = useMemo<CategoryOptions>(
     () => ({
-      expense: categoryOptions(expenseTree.data ?? []),
-      income: categoryOptions(incomeTree.data ?? []),
+      expense: expenseTree.data ? categoryOptions(expenseTree.data) : undefined,
+      income: incomeTree.data ? categoryOptions(incomeTree.data) : undefined,
     }),
     [expenseTree.data, incomeTree.data],
   );

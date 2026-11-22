@@ -170,6 +170,7 @@ export const en: Messages<typeof esCL> = {
       description: "Description",
       memo: "Memo",
       choose: "Choose an option",
+      currentCategory: "Current category",
       save: "Save",
       cancel: "Cancel",
       delete: "Delete",

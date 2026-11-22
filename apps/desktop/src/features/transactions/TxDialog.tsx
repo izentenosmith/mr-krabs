@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -72,8 +72,21 @@ export interface CategoryOption {
 
 /** Category choices per transaction type, from `category_tree` (REQ-13). */
 export interface CategoryOptions {
-  expense: CategoryOption[];
-  income: CategoryOption[];
+  /** `undefined` while that kind's tree is unavailable (failed or not loaded). */
+  expense: CategoryOption[] | undefined;
+  income: CategoryOption[] | undefined;
+}
+
+const listFor = (categories: CategoryOptions, kind: string) =>
+  kind === "income" ? categories.income : kind === "transfer" ? [] : categories.expense;
+
+/**
+ * Whether an edited transaction's stored category can stay: it is in its kind's list, or
+ * that list is unavailable (so nothing can be checked and the edit must still save, F10).
+ */
+function keepsCategory(categories: CategoryOptions, initial: TxDetailDto) {
+  const list = listFor(categories, initial.kind);
+  return list === undefined || list.some((c) => c.id === initial.categoryId);
 }
 
 export interface TxDialogProps {
@@ -113,11 +126,7 @@ function defaults(categories: CategoryOptions, initial?: TxDetailDto): FormValue
     accountId: initial.accountId,
     // Only a category the picker can show (an archived or missing one would be re-sent
     // invisibly); otherwise the user picks again (X-13 F1).
-    categoryId: (initial.kind === "income" ? categories.income : categories.expense).some(
-      (c) => c.id === initial.categoryId,
-    )
-      ? (initial.categoryId ?? "")
-      : "",
+    categoryId: keepsCategory(categories, initial) ? (initial.categoryId ?? "") : "",
     toAccountId: initial.toAccountId ?? "",
     // The detail amount is positive and in Rust's es-CL text, which Rust parses back
     // (never the row's signed amount, X-7).
@@ -200,8 +209,18 @@ export function TxDialog({
   const type = watch("type");
   const accountId = watch("accountId");
   const currency = accounts.find((a) => a.id === accountId)?.currency;
-  const optionsFor = (kind: FormValues["type"]) => (kind === "income" ? categories.income : categories.expense);
+  const optionsFor = (kind: FormValues["type"]) => listFor(categories, kind);
   const categoryOptions = optionsFor(type);
+  const categoryId = watch("categoryId");
+  // A stored category dropped because its list no longer offers it is explained at once
+  // (X-13 F11); `errors.field.archived` covers archived and removed categories.
+  // Decided once, when the dialog opens: later edits are the user's.
+  const [categoryDropped] = useState(
+    () => !!initial?.categoryId && !keepsCategory(categories, initial),
+  );
+  useEffect(() => {
+    if (categoryDropped) setError("categoryId", { type: "server", message: "errors.field.archived" });
+  }, [categoryDropped, setError]);
   // A category belongs to one type's list: switching types drops one the new list doesn't
   // have, so what is sent is always what the select shows (F15).
   const typeField = register("type", {
@@ -209,7 +228,7 @@ export function TxDialog({
       const next = e.target.value as FormValues["type"];
       // A transfer has no category; keep the value so switching back restores it (F41).
       if (next === "transfer") return;
-      if (!optionsFor(next).some((c) => c.id === getValues("categoryId"))) setValue("categoryId", "");
+      if (!optionsFor(next)?.some((c) => c.id === getValues("categoryId"))) setValue("categoryId", "");
     },
   });
   const [deleting, setDeleting] = useState(false);
@@ -270,7 +289,12 @@ export function TxDialog({
             <Field key="category" label={t("tx.form.category")} error={err("categoryId")}>
               <select {...register("categoryId")} className={controlClass}>
                 <option value="">{t("tx.form.choose")}</option>
-                <CategoryOptionList options={categoryOptions} />
+                {categoryOptions === undefined && categoryId ? (
+                  // The list is unavailable: keep showing what will be sent (F10).
+                  <option value={categoryId}>{t("tx.form.currentCategory")}</option>
+                ) : (
+                  <CategoryOptionList options={categoryOptions ?? []} />
+                )}
               </select>
             </Field>
           )}

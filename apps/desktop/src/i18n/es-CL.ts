@@ -166,6 +166,7 @@ export const esCL = {
       description: "Descripción",
       memo: "Nota",
       choose: "Elige una opción",
+      currentCategory: "Categoría actual",
       save: "Guardar",
       cancel: "Cancelar",
       delete: "Eliminar",
