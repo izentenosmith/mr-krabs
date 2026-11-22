@@ -4,6 +4,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory } from "@tanstack/react-router";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { toast } from "sonner";
 import { ApiError } from "@mr-krabs/api-client";
 import type {
   AccountSummaryDto,
@@ -192,6 +193,9 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+  // Sonner keeps toasts in a module-level store and replays active ones to a new Toaster;
+  // dismiss them so one test's toast never shows in the next (isolation only).
+  toast.dismiss();
   await i18n.changeLanguage("es-CL");
 });
 
