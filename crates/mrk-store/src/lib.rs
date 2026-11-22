@@ -22,8 +22,7 @@ pub use households::{HouseholdRow, MemberRow};
 pub use write::Write;
 
 pub use categories::{
-    BudgetLineAmount, CategoryMergeWrite, CategoryRow, HouseholdSettings, SeedAccount,
-    SeedCategory, SeedReport, Stamp,
+    BudgetLineAmount, CategoryMergeWrite, CategoryRow, SeedAccount, SeedCategory, SeedReport, Stamp,
 };
 pub use change_log::{Row, Visibility};
 

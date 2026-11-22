@@ -57,14 +57,6 @@ pub struct SeedReport {
     pub accounts_inserted: usize,
 }
 
-/// The household's typed settings (schema v2 `household`).
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct HouseholdSettings {
-    pub id: String,
-    pub base_currency_code: String,
-    pub locale: String,
-}
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CategoryRow {
     pub id: String,
@@ -100,24 +92,6 @@ pub struct CategoryMergeWrite {
 }
 
 impl Store {
-    /// The single household of this database, if one was created.
-    pub fn household_settings(&self) -> Result<Option<HouseholdSettings>> {
-        Ok(self
-            .conn
-            .query_row(
-                "SELECT id, base_currency_code, locale FROM household WHERE deleted = 0 LIMIT 1",
-                [],
-                |r| {
-                    Ok(HouseholdSettings {
-                        id: r.get(0)?,
-                        base_currency_code: r.get(1)?,
-                        locale: r.get(2)?,
-                    })
-                },
-            )
-            .optional()?)
-    }
-
     /// Inserts the default categories and accounts. Idempotent: a row whose id exists, live
     /// or deleted, is left alone, so deleted seed rows are never resurrected (ADR-0008).
     pub fn seed_defaults(

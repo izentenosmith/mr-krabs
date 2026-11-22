@@ -70,14 +70,9 @@ impl App {
 
     /// Seeds the default categories and savings/investment accounts in the household's
     /// language and base currency (docs/01, ADR-0008). Idempotent, and never resurrects a
-    /// seeded row the household deleted. Household creation and adoption call it once those
-    /// commands exist (M1).
+    /// seeded row the household deleted. `household_create` calls it; adoption will too.
     pub fn seed_household_defaults(&mut self) -> Result<SeedReport, ApiError> {
-        let household = self
-            .store
-            .household_settings()
-            .map_err(ApiError::internal)?
-            .ok_or_else(|| ApiError::new(ErrorCode::NotFound, "create the household first"))?;
+        let household = self.household_row()?;
         let locale = seed::Locale::parse(&household.locale).ok_or_else(|| {
             ApiError::internal(format!("unsupported locale {:?}", household.locale))
         })?;
