@@ -1,19 +1,17 @@
-import {
-  createHashHistory,
-  createRootRoute,
-  createRoute,
-  createRouter,
-  type RouterHistory,
-} from "@tanstack/react-router";
+import { createHashHistory, createRoute, createRouter, type RouterHistory } from "@tanstack/react-router";
 
 import { HomePage } from "@/routes/home";
-import { RootLayout } from "@/routes/root";
+import { appLayoutRoute, rootRoute } from "@/routes/tree";
 
-const rootRoute = createRootRoute({ component: RootLayout });
+const homeRoute = createRoute({ getParentRoute: () => appLayoutRoute, path: "/", component: HomePage });
 
-const homeRoute = createRoute({ getParentRoute: () => rootRoute, path: "/", component: HomePage });
+/**
+ * Screens inside the app shell. ui-transactions (S7) adds its route here; its nav item goes
+ * in `navItems` (routes/nav.ts).
+ */
+const appChildRoutes = [homeRoute];
 
-const routeTree = rootRoute.addChildren([homeRoute]);
+const routeTree = rootRoute.addChildren([appLayoutRoute.addChildren(appChildRoutes)]);
 
 /**
  * Hash history by default: the Tauri webview and the Vite dev server then serve the same

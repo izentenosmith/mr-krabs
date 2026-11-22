@@ -66,7 +66,7 @@ async function sidebar() {
 
 async function openNewAccount() {
   const s = await sidebar();
-  fireEvent.click(s.getAllByRole("button", { name: "Nueva cuenta" })[0]);
+  fireEvent.click(s.getAllByRole("button", { name: "Nueva cuenta" })[0]!);
   return within(await screen.findByRole("dialog", { name: "Nueva cuenta" }));
 }
 
@@ -431,7 +431,7 @@ describe("S6 edge cases", () => {
     const s = await sidebar();
     expect(await s.findByText("Crea tu primera cuenta")).toBeInTheDocument();
     const buttons = s.getAllByRole("button", { name: "Nueva cuenta" });
-    fireEvent.click(buttons[buttons.length - 1]);
+    fireEvent.click(buttons[buttons.length - 1]!);
     expect(await screen.findByRole("dialog", { name: "Nueva cuenta" })).toBeInTheDocument();
   });
 });
