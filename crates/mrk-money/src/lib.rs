@@ -216,7 +216,9 @@ impl Money {
 /// Parses an amount written in Chilean format into minor units.
 ///
 /// * Thousands separator `.`, decimal separator `,` (`"1.234.567"`, `"12,50"`).
-/// * Accepts a leading `-`, wrapping parentheses, `$`/`US$`/`UF` prefixes and spaces.
+/// * Accepts spaces, wrapping parentheses, then a leading `-`, then at most one currency
+///   marker of a built-in currency: its symbol (`$`, `US$`, `€`, `UF`) or ISO code (`CLP`),
+///   in any ASCII case. An ISO code may instead follow the number (`27.990 CLP`).
 /// * Never rounds: more decimals than the currency allows is an error.
 pub fn parse_es_cl(input: &str, minor_units: u8) -> Result<i64, MoneyError> {
     let invalid = || MoneyError::InvalidAmount(input.to_owned());
@@ -231,9 +233,7 @@ pub fn parse_es_cl(input: &str, minor_units: u8) -> Result<i64, MoneyError> {
         negative = !negative;
         s = rest.to_owned();
     }
-    // Strip currency markers such as "$", "US$", "UF", "CLP".
-    let s = s.trim_start_matches(|c: char| c.is_ascii_alphabetic() || c == '$');
-    let s = s.trim_end_matches(|c: char| c.is_ascii_alphabetic());
+    let s = strip_currency_marker(&s);
     if s.is_empty() {
         return Err(invalid());
     }
@@ -275,8 +275,39 @@ pub fn parse_es_cl(input: &str, minor_units: u8) -> Result<i64, MoneyError> {
     for _ in frac_part.len()..usize::from(minor_units) {
         digits.push('0');
     }
-    let value: i64 = digits.parse().map_err(|_| MoneyError::Overflow)?;
-    Ok(if negative { -value } else { value })
+    // i128 so that i64::MIN's magnitude (one past i64::MAX) still reads back.
+    let value: i128 = digits.parse().map_err(|_| MoneyError::Overflow)?;
+    i64::try_from(if negative { -value } else { value }).map_err(|_| MoneyError::Overflow)
+}
+
+/// Removes one built-in currency marker: a leading symbol or ISO code, or else a trailing
+/// ISO code. `s` has no whitespace, so symbols are compared without theirs (`"UF "` → `UF`).
+/// Anything else is left in place for the digit checks to reject.
+fn strip_currency_marker(s: &str) -> &str {
+    fn strip_prefix_ci<'a>(s: &'a str, p: &str) -> Option<&'a str> {
+        let head = s.get(..p.len())?;
+        head.eq_ignore_ascii_case(p).then(|| &s[p.len()..])
+    }
+    fn strip_suffix_ci<'a>(s: &'a str, p: &str) -> Option<&'a str> {
+        let split = s.len().checked_sub(p.len())?;
+        let tail = s.get(split..)?;
+        tail.eq_ignore_ascii_case(p).then(|| &s[..split])
+    }
+
+    for c in Currency::BUILT_IN {
+        let symbol = c.symbol.trim();
+        for marker in [symbol, c.code.as_str()] {
+            if let Some(rest) = strip_prefix_ci(s, marker) {
+                return rest;
+            }
+        }
+    }
+    for c in Currency::BUILT_IN {
+        if let Some(rest) = strip_suffix_ci(s, c.code.as_str()) {
+            return rest;
+        }
+    }
+    s
 }
 
 /// Formats minor units in Chilean style: `$1.234.567`, `-US$12,50`, `UF 1.234,5678`.
@@ -417,10 +448,12 @@ mod tests {
     fn parse_rejects_misplaced_markers() {
         for bad in [
             "€", "$", "US$", "UF", "CLP", "-€", "()", // marker alone
-            "1.€234", "12€", "1$0",                // marker in the middle or at the end
+            "1.€234", "12€", "1$0", // marker in the middle or at the end
             "$$5", "€€5", "CLP$5", "$5CLP", "US$€5", // two markers
-            "$-5", "€(5)",                         // marker before the sign
-            "abc5", "5abc", "X$5",                 // unknown letters
+            "$-5", "€(5)", // marker before the sign
+            "abc5", "5abc", "X$5", // unknown letters
+            "£5", "é5", "5é", "5€",
+            "€5€", // other non-ASCII: rejected, never a char-boundary panic
         ] {
             assert!(parse_es_cl(bad, 2).is_err(), "{bad:?} should be rejected");
         }
@@ -428,8 +461,14 @@ mod tests {
 
     #[test]
     fn parse_reads_the_i64_edges() {
-        assert_eq!(parse_es_cl(&format_es_cl(i64::MIN, 0, "$"), 0), Ok(i64::MIN));
-        assert_eq!(parse_es_cl(&format_es_cl(i64::MAX, 0, "$"), 0), Ok(i64::MAX));
+        assert_eq!(
+            parse_es_cl(&format_es_cl(i64::MIN, 0, "$"), 0),
+            Ok(i64::MIN)
+        );
+        assert_eq!(
+            parse_es_cl(&format_es_cl(i64::MAX, 0, "$"), 0),
+            Ok(i64::MAX)
+        );
         assert_eq!(
             parse_es_cl("9.223.372.036.854.775.808", 0),
             Err(MoneyError::Overflow)
