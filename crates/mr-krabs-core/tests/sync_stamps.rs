@@ -4,8 +4,8 @@
 
 use std::path::PathBuf;
 
-use mr_krabs_core::App;
 use mr_krabs_core::seed::seed_id;
+use mr_krabs_core::{App, ErrorCode};
 use mrk_store::Store;
 use serde_json::{Value as Json, json};
 
@@ -378,8 +378,26 @@ fn a_merge_failing_part_way_writes_nothing() {
                  ('zz2', '{del}', 'expense', 'ZZZ', 'zzz', 1, 'dev-a');"
         ))
         .unwrap();
-    // `aaa` is re-parented before `zzz` collides with `zz2` under the target.
-    assert!(app.category_delete(&sup, Some(&del)).is_err());
+    let categories = || -> Vec<String> {
+        let raw = db.raw();
+        let mut st = raw
+            .connection()
+            .prepare(
+                "SELECT id || '|' || coalesce(parent_id, '') || '|' || name_key || '|' \
+                 || deleted || '|' || hlc || '|' || hlc_device FROM category ORDER BY id",
+            )
+            .unwrap();
+        st.query_map([], |r| r.get(0))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect()
+    };
+    let before = categories();
+    // `aaa` is re-parented before `zzz` collides with `zz2` under the target. INTERNAL, not
+    // VALIDATION: the store's write failed, so this exercises the rollback, not a pre-check.
+    let err = app.category_delete(&sup, Some(&del)).unwrap_err();
+    assert_eq!(err.code, ErrorCode::Internal, "{err:?}");
+    assert_eq!(categories(), before);
     assert_eq!(db.int("SELECT count(*) FROM change_log"), 0);
     assert_eq!(db.int("SELECT count(*) FROM field_clock"), 0);
     assert_eq!(
