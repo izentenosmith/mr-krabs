@@ -269,3 +269,160 @@ proptest! {
         prop_assert_eq!(count(&s, "SELECT count(*) FROM field_clock WHERE entity_id='b'"), field_hlc.len() as i64);
     }
 }
+
+// ── Remediation slices (ledger iteration 1) ──
+
+struct TempDb(std::path::PathBuf);
+
+impl TempDb {
+    fn new(name: &str) -> Self {
+        let dir = std::env::temp_dir().join(format!("mrk-s1-store-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        Self(dir)
+    }
+    fn path(&self) -> std::path::PathBuf {
+        self.0.join("mrkrabs.sqlite")
+    }
+}
+
+impl Drop for TempDb {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+fn rename(s: &Store, name: &str) {
+    let tx = s.connection().unchecked_transaction().unwrap();
+    s.track(&tx, "category", "c", Visibility::Household, |tx| {
+        tx.execute("UPDATE category SET name = ?1 WHERE id = 'c'", [name])?;
+        Ok(())
+    })
+    .unwrap();
+    tx.commit().unwrap();
+}
+
+/// F1: a stale in-memory clock never out-stamps a change another connection committed.
+#[test]
+fn a_second_store_on_the_same_file_stamps_after_the_first() {
+    let db = TempDb::new("two");
+    let mut a = Store::open(&db.path()).unwrap();
+    a.migrate().unwrap();
+    a.connection().execute_batch(FIXTURE).unwrap();
+    a.ensure_local_device().unwrap();
+    let mut b = Store::open(&db.path()).unwrap();
+    b.ensure_local_device().unwrap();
+    assert_eq!(a.local_device_id(), b.local_device_id());
+
+    // A's clock runs a day ahead of the wall clock; B loaded its clock before that.
+    rename(&a, "A");
+    let ahead: i64 = count(&a, "SELECT max(hlc) FROM change_log") + ((24 * 3_600_000_i64) << 16);
+    a.connection()
+        .execute("UPDATE change_log SET hlc = ?1", [ahead])
+        .unwrap();
+    a.connection()
+        .execute("UPDATE field_clock SET hlc = ?1", [ahead])
+        .unwrap();
+    rename(&b, "B");
+    let (hlc, clock): (i64, i64) = b
+        .connection()
+        .query_row(
+            "SELECT (SELECT max(hlc) FROM change_log WHERE fields_json LIKE '%\"B\"%'), \
+                    (SELECT hlc FROM field_clock WHERE entity_id = 'c' AND field = 'name')",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert!(hlc > ahead, "{hlc} <= {ahead}");
+    assert_eq!(clock, hlc);
+}
+
+/// F5: a local device another connection created first is adopted.
+#[test]
+fn a_local_device_created_by_another_connection_is_adopted() {
+    let db = TempDb::new("adopt");
+    let mut a = Store::open(&db.path()).unwrap();
+    a.migrate().unwrap();
+    let mut b = Store::open(&db.path()).unwrap();
+    let id = b.ensure_local_device().unwrap();
+    assert_eq!(a.ensure_local_device().unwrap(), id);
+    assert_eq!(count(&a, "SELECT count(*) FROM device"), 1);
+}
+
+/// F8: restoring the clock reads an index, not the whole log.
+#[test]
+fn the_clock_restore_uses_an_index() {
+    let s = ready();
+    let plan: String = s
+        .connection()
+        .query_row(
+            "EXPLAIN QUERY PLAN SELECT max(hlc) FROM change_log",
+            [],
+            |r| r.get(3),
+        )
+        .unwrap();
+    assert!(plan.contains("ix_change_log_hlc"), "{plan}");
+}
+
+fn ops(s: &Store, id: &str) -> Vec<String> {
+    let mut st = s
+        .connection()
+        .prepare("SELECT op FROM change_log WHERE entity_id = ?1 ORDER BY seq")
+        .unwrap();
+    st.query_map([id], |r| r.get(0))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect()
+}
+
+fn tag(s: &Store, sql: &str) {
+    let tx = s.connection().unchecked_transaction().unwrap();
+    s.track(&tx, "tag", "t", Visibility::Household, |tx| {
+        tx.execute(sql, [])?;
+        Ok(())
+    })
+    .unwrap();
+    tx.commit().unwrap();
+}
+
+/// F11: only the live → deleted transition is a delete; restore and tombstone edits upsert.
+#[test]
+fn restore_and_tombstone_edits_log_upsert() {
+    let s = ready();
+    tag(
+        &s,
+        "INSERT INTO tag (id,name,hlc,hlc_device) VALUES ('t','x',0,'')",
+    );
+    tag(&s, "UPDATE tag SET deleted = 1 WHERE id = 't'");
+    tag(&s, "UPDATE tag SET name = 'y' WHERE id = 't'");
+    tag(&s, "UPDATE tag SET deleted = 0 WHERE id = 't'");
+    assert_eq!(ops(&s, "t"), ["upsert", "delete", "upsert", "upsert"]);
+}
+
+/// F11: values the log cannot carry are refused, and the write rolls back with them.
+#[test]
+fn real_and_blob_changes_are_refused() {
+    let s = ready();
+    s.connection()
+        .execute_batch(
+            "CREATE TABLE odd (id TEXT PRIMARY KEY, r REAL, b BLOB, hlc INTEGER NOT NULL DEFAULT 0, \
+             hlc_device TEXT NOT NULL DEFAULT '', deleted INTEGER NOT NULL DEFAULT 0)",
+        )
+        .unwrap();
+    for (id, sql) in [
+        ("r", "INSERT INTO odd (id, r) VALUES ('r', 1.5)"),
+        ("b", "INSERT INTO odd (id, b) VALUES ('b', x'00')"),
+    ] {
+        let tx = s.connection().unchecked_transaction().unwrap();
+        let err = s
+            .track(&tx, "odd", id, Visibility::Household, |tx| {
+                tx.execute(sql, [])?;
+                Ok(())
+            })
+            .unwrap_err();
+        assert!(
+            matches!(err, mrk_store::StoreError::UnloggableValue { .. }),
+            "{err}"
+        );
+    }
+    assert_eq!(count(&s, "SELECT count(*) FROM change_log"), 0);
+}

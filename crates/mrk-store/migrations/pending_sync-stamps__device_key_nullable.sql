@@ -23,3 +23,6 @@ ALTER TABLE device_new RENAME TO device;
 CREATE UNIQUE INDEX ux_device_local ON device(is_local) WHERE is_local = 1;
 CREATE UNIQUE INDEX ux_device_public_key ON device(public_key);
 CREATE INDEX ix_device_member ON device(member_id);
+
+-- The clock is restored from (and re-read against) the highest logged stamp: index it.
+CREATE INDEX ix_change_log_hlc ON change_log(hlc);

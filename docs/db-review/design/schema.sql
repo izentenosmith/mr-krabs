@@ -512,6 +512,7 @@ CREATE TABLE change_log (
 ) STRICT;
 CREATE INDEX ix_change_log_origin ON change_log(device_id, hlc);
 CREATE INDEX ix_change_log_entity ON change_log(entity, entity_id);
+CREATE INDEX ix_change_log_hlc ON change_log(hlc);                                -- clock restore (ADR-0010)
 
 CREATE TABLE field_clock (
     entity      TEXT NOT NULL,

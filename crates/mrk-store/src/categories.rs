@@ -265,28 +265,24 @@ impl Store {
             set(&tx, "budget_line", "deleted", absorbed, &1)?;
             set(&tx, "budget_line", "amount_minor", target, amount)?;
         }
-        // A posting is private when its entry touches a private account (docs/05).
-        let postings: Vec<(String, bool)> = {
-            let mut stmt = tx.prepare(
-                "SELECT p.id, EXISTS (SELECT 1 FROM posting q JOIN account a ON a.id = q.account_id
-                                      WHERE q.entry_id = p.entry_id AND a.visibility = 'private')
-                 FROM posting p WHERE p.category_id = ?1 ORDER BY p.id",
-            )?;
-            stmt.query_map([&m.from], |r| Ok((r.get(0)?, r.get(1)?)))?
-                .collect::<std::result::Result<_, _>>()?
-        };
-        for (id, private) in postings {
-            let visibility = if private {
-                Visibility::Private
-            } else {
-                Visibility::Household
-            };
-            set_as(visibility, &tx, "posting", "category_id", &id, &m.into)?;
+        // Postings and recurring templates are private when their entry or rule touches a
+        // private account (docs/05 "Visibility filtering").
+        for (table, parent) in [
+            ("posting", "entry_id"),
+            ("recurring_rule_posting", "rule_id"),
+        ] {
+            for (id, private) in rows_referencing(&tx, table, parent, &m.from)? {
+                let visibility = if private {
+                    Visibility::Private
+                } else {
+                    Visibility::Household
+                };
+                set_as(visibility, &tx, table, "category_id", &id, &m.into)?;
+            }
         }
         for (table, column) in [
             ("payee", "default_category_id"),
             ("payee_rule", "set_category_id"),
-            ("recurring_rule_posting", "category_id"),
         ] {
             let ids: Vec<String> = {
                 let mut stmt = tx.prepare(&format!(
@@ -314,4 +310,23 @@ impl Store {
         tx.commit()?;
         Ok(())
     }
+}
+
+/// Rows of `table` whose `category_id` is `category`, each with whether a sibling row (same
+/// `parent`) is on a private account.
+fn rows_referencing(
+    tx: &Transaction<'_>,
+    table: &str,
+    parent: &str,
+    category: &str,
+) -> Result<Vec<(String, bool)>> {
+    let mut stmt = tx.prepare(&format!(
+        "SELECT r.id, EXISTS (SELECT 1 FROM {table} q JOIN account a ON a.id = q.account_id
+                              WHERE q.{parent} = r.{parent} AND a.visibility = 'private')
+         FROM {table} r WHERE r.category_id = ?1 ORDER BY r.id"
+    ))?;
+    let rows = stmt
+        .query_map([category], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect::<std::result::Result<_, _>>()?;
+    Ok(rows)
 }

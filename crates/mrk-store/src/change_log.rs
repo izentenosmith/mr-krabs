@@ -47,7 +47,13 @@ pub(crate) struct LocalClock {
 }
 
 impl LocalClock {
-    fn tick(&self) -> Result<Stamp> {
+    /// Issues the next stamp inside `tx`. The log is re-read first, so a change another
+    /// connection committed is never out-stamped by a stale in-memory clock.
+    fn tick(&self, tx: &Transaction<'_>) -> Result<Stamp> {
+        let logged = max_logged_hlc(tx)?;
+        if logged > self.last.get() {
+            self.last.set(logged);
+        }
         let now_ms = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |d| d.as_millis() as u64);
@@ -68,29 +74,19 @@ impl Store {
     ///
     /// `device` is a local-only trust store, so this write is not logged.
     pub fn ensure_local_device(&mut self) -> Result<String> {
-        let existing: Option<String> = self
-            .conn
-            .query_row("SELECT id FROM device WHERE is_local = 1", [], |r| r.get(0))
-            .optional()?;
-        let device = match existing {
-            Some(id) => id,
-            None => {
-                let id = uuid::Uuid::now_v7().to_string();
-                self.conn.execute(
-                    "INSERT INTO device (id, member_id, name, public_key, is_local) \
-                     VALUES (?1, NULL, 'local', NULL, 1)",
-                    [&id],
-                )?;
-                id
-            }
-        };
-        let last: Option<i64> =
+        // INSERT OR IGNORE: a device another connection created first is adopted.
+        self.conn.execute(
+            "INSERT OR IGNORE INTO device (id, member_id, name, public_key, is_local) \
+             VALUES (?1, NULL, 'local', NULL, 1)",
+            [uuid::Uuid::now_v7().to_string()],
+        )?;
+        let device: String =
             self.conn
-                .query_row("SELECT max(hlc) FROM change_log", [], |r| r.get(0))?;
-        let last = u64::try_from(last.unwrap_or(0)).unwrap_or(0);
+                .query_row("SELECT id FROM device WHERE is_local = 1", [], |r| r.get(0))?;
+        let last = max_logged_hlc(&self.conn)?;
         self.local = Some(LocalClock {
             device: device.clone(),
-            last: Cell::new(Hlc::from_u64(last)),
+            last: Cell::new(last),
         });
         Ok(device)
     }
@@ -163,7 +159,7 @@ impl Store {
             "upsert"
         };
 
-        let stamp = local.tick()?;
+        let stamp = local.tick(tx)?;
         tx.execute(
             &format!("UPDATE {entity} SET hlc = ?1, hlc_device = ?2 WHERE id = ?3"),
             params![stamp.hlc, stamp.device, id],
@@ -187,7 +183,8 @@ impl Store {
             "INSERT INTO field_clock (entity, entity_id, field, hlc, device_id) \
              VALUES (?1, ?2, ?3, ?4, ?5) \
              ON CONFLICT (entity, entity_id, field) \
-             DO UPDATE SET hlc = excluded.hlc, device_id = excluded.device_id",
+             DO UPDATE SET hlc = excluded.hlc, device_id = excluded.device_id \
+             WHERE (excluded.hlc, excluded.device_id) > (field_clock.hlc, field_clock.device_id)",
         )?;
         for field in fields.keys() {
             clock.execute(params![entity, id, field, stamp.hlc, stamp.device])?;
@@ -213,6 +210,14 @@ impl Store {
         self.record_change(tx, entity, visibility, before.as_ref(), &after)?;
         Ok(out)
     }
+}
+
+/// The highest stamp in the log, from any device (`ix_change_log_hlc`).
+fn max_logged_hlc(conn: &rusqlite::Connection) -> Result<Hlc> {
+    let max: Option<i64> = conn.query_row("SELECT max(hlc) FROM change_log", [], |r| r.get(0))?;
+    Ok(Hlc::from_u64(
+        max.and_then(|m| u64::try_from(m).ok()).unwrap_or(0),
+    ))
 }
 
 /// Table names are spliced into SQL, so only plain identifiers pass; `device` is local-only.

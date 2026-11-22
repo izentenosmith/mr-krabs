@@ -293,3 +293,101 @@ fn seeding_writes_no_change_log_but_edits_do() {
         .unwrap();
     assert_eq!(db.int("SELECT count(*) FROM change_log"), 1);
 }
+
+// ── Remediation slices (ledger iteration 1) ──
+
+/// F2 + F12: rows of a private account's entry or recurring template are logged private.
+#[test]
+fn merging_logs_private_account_rows_as_private() {
+    let db = Db::new("private");
+    let (mut app, sup, del) = merge_fixture(&db);
+    db.raw()
+        .connection()
+        .execute_batch(&format!(
+            "INSERT INTO member (id, household_id, display_name, hlc, hlc_device) VALUES ('m', 'h', 'A', 1, 'dev-a');
+             INSERT INTO account (id, name, kind, currency_code, scope, owner_member_id, visibility, hlc, hlc_device)
+                 VALUES ('mine', 'Mía', 'checking', 'CLP', 'personal', 'm', 'private', 1, 'dev-a');
+             INSERT INTO journal_entry (id, entry_date, hlc, hlc_device) VALUES ('e2', '2026-11-03', 1, 'dev-a');
+             INSERT INTO posting (id, entry_id, leg, account_id, amount_minor, currency_code, status, hlc, hlc_device)
+                 VALUES ('pa', 'e2', 'account', 'mine', -100, 'CLP', 'cleared', 1, 'dev-a');
+             INSERT INTO posting (id, entry_id, leg, category_id, amount_minor, currency_code, hlc, hlc_device)
+                 VALUES ('pc', 'e2', 'category', '{sup}', 100, 'CLP', 1, 'dev-a');
+             INSERT INTO recurring_rule (id, name, kind, rrule, amount_mode, expected_minor, tolerance_pct, currency_code, next_date, hlc, hlc_device)
+                 VALUES ('rr', 'Luz', 'bill', 'FREQ=MONTHLY', 'approximate', 100, '10', 'CLP', '2026-12-05', 1, 'dev-a');
+             INSERT INTO recurring_rule_posting (id, rule_id, leg, account_id, amount_minor, currency_code, hlc, hlc_device)
+                 VALUES ('ra', 'rr', 'account', 'mine', -100, 'CLP', 1, 'dev-a');
+             INSERT INTO recurring_rule_posting (id, rule_id, leg, category_id, amount_minor, currency_code, hlc, hlc_device)
+                 VALUES ('rc', 'rr', 'category', '{sup}', 100, 'CLP', 1, 'dev-a');"
+        ))
+        .unwrap();
+    app.category_delete(&sup, Some(&del)).unwrap();
+    let log = db.log();
+    assert_eq!(find(&log, "posting", "pc").visibility, "private");
+    assert_eq!(
+        find(&log, "recurring_rule_posting", "rc").visibility,
+        "private"
+    );
+    assert_eq!(find(&log, "posting", "p2").visibility, "household");
+    assert_eq!(
+        find(&log, "recurring_rule_posting", "rc").fields,
+        json!({"category_id": {"old": sup, "new": del}})
+    );
+}
+
+/// F12: every other merge write kind carries exactly its changed field.
+#[test]
+fn merge_log_rows_for_moves_reparents_and_payees_carry_one_field() {
+    let db = Db::new("fields2");
+    let (mut app, sup, del) = merge_fixture(&db);
+    app.category_delete(&sup, Some(&del)).unwrap();
+    let log = db.log();
+    let moved = json!({"old": sup, "new": del});
+    assert_eq!(
+        find(&log, "budget_line", "b2").fields,
+        json!({"category_id": moved})
+    );
+    assert_eq!(
+        find(&log, "category", "organic").fields,
+        json!({"parent_id": moved})
+    );
+    assert_eq!(
+        find(&log, "payee", "py").fields,
+        json!({"default_category_id": moved})
+    );
+    assert_eq!(
+        find(&log, "payee_rule", "pr").fields,
+        json!({"set_category_id": moved})
+    );
+}
+
+/// F3: a merge that fails part-way leaves every row and the log as they were.
+#[test]
+fn a_merge_failing_part_way_writes_nothing() {
+    let db = Db::new("partial");
+    let mut app = household_app(&db);
+    let (sup, del) = (
+        seed_id("expense.food.supermarket"),
+        seed_id("expense.food.delivery"),
+    );
+    db.raw()
+        .connection()
+        .execute_batch(&format!(
+            "INSERT INTO category (id, parent_id, kind, name, name_key, hlc, hlc_device) VALUES
+                 ('aaa', '{sup}', 'expense', 'Aaa', 'aaa', 1, 'dev-a'),
+                 ('zzz', '{sup}', 'expense', 'Zzz', 'zzz', 1, 'dev-a'),
+                 ('zz2', '{del}', 'expense', 'ZZZ', 'zzz', 1, 'dev-a');"
+        ))
+        .unwrap();
+    // `aaa` is re-parented before `zzz` collides with `zz2` under the target.
+    assert!(app.category_delete(&sup, Some(&del)).is_err());
+    assert_eq!(db.int("SELECT count(*) FROM change_log"), 0);
+    assert_eq!(db.int("SELECT count(*) FROM field_clock"), 0);
+    assert_eq!(
+        db.text("SELECT parent_id FROM category WHERE id = 'aaa'"),
+        sup
+    );
+    assert_eq!(
+        db.int(&format!("SELECT deleted FROM category WHERE id = '{sup}'")),
+        0
+    );
+}
