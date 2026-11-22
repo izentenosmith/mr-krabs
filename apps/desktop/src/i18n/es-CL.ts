@@ -125,6 +125,7 @@ export const esCL = {
     transferTo: "Transferencia con",
     deleted: "Transacción eliminada",
     undo: "Deshacer",
+    retry: "Reintentar",
     col: {
       date: "Fecha",
       description: "Descripción",

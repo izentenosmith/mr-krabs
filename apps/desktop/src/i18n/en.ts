@@ -129,6 +129,7 @@ export const en: Messages<typeof esCL> = {
     transferTo: "Transfer with",
     deleted: "Transaction deleted",
     undo: "Undo",
+    retry: "Retry",
     col: {
       date: "Date",
       description: "Description",

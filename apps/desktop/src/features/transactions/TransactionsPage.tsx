@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { Hourglass, Inbox, Plus } from "lucide-react";
+import { CircleAlert, Hourglass, Inbox, Plus } from "lucide-react";
 import { toast } from "sonner";
 import {
   api,
@@ -75,11 +75,21 @@ export function TransactionsPage({
   const toastError = (raw: unknown) => toast.error(t(errorCopyKey(ApiError.from(raw).code)));
 
   const open = async (row: TxRowDto) => {
-    const detail = await queryClient.fetchQuery({
-      queryKey: ["tx", "detail", row.id],
-      queryFn: () => api.tx.get(row.id),
-    });
-    setDialog({ mode: "edit", detail });
+    try {
+      const detail = await queryClient.fetchQuery({
+        queryKey: ["tx", "detail", row.id],
+        queryFn: () => api.tx.get(row.id),
+      });
+      setDialog({ mode: "edit", detail });
+    } catch (raw) {
+      toastError(raw);
+    }
+  };
+
+  // A failed next page is reported once; paging stops until the list is refetched.
+  const loadMore = async () => {
+    const result = await list.fetchNextPage();
+    if (result.isError) toastError(result.error);
   };
 
   const save = async (input: NewTxInput) => {
@@ -145,14 +155,24 @@ export function TransactionsPage({
         <p aria-busy className="text-muted-foreground text-sm">
           {t("loading")}
         </p>
-      ) : rows.length === 0 && !list.error ? (
+      ) : list.isError && !list.data ? (
+        <div className="flex flex-col items-start gap-3">
+          <p role="alert" className="text-destructive flex items-center gap-2 text-sm">
+            <CircleAlert aria-hidden className="size-4" />
+            {t(errorCopyKey(ApiError.from(list.error).code))}
+          </p>
+          <Button variant="outline" onClick={() => void list.refetch()}>
+            {t("tx.retry")}
+          </Button>
+        </div>
+      ) : rows.length === 0 ? (
         <StateBlock icon={Inbox} title={t("tx.emptyTitle")} body={t("tx.emptyBody")} />
       ) : (
         <TransactionsTable
           rows={rows}
-          hasMore={list.hasNextPage}
+          hasMore={list.hasNextPage && !list.isFetchNextPageError}
           loadingMore={list.isFetchingNextPage}
-          onLoadMore={() => void list.fetchNextPage()}
+          onLoadMore={() => void loadMore()}
           onOpen={(row) => void open(row)}
         />
       )}
