@@ -62,9 +62,9 @@ CREATE INDEX ix_member_household ON member(household_id);
 
 CREATE TABLE device (
     id             TEXT PRIMARY KEY,
-    member_id      TEXT NOT NULL REFERENCES member(id),
+    member_id      TEXT REFERENCES member(id),                             -- null until household_create links it (ADR-0010)
     name           TEXT NOT NULL,
-    public_key     BLOB NOT NULL,
+    public_key     BLOB,                                                   -- null until pairing (ADR-0010)
     is_local       INTEGER NOT NULL CHECK (is_local IN (0,1)),
     paired_at      TEXT,
     revoked_at     TEXT
@@ -512,6 +512,7 @@ CREATE TABLE change_log (
 ) STRICT;
 CREATE INDEX ix_change_log_origin ON change_log(device_id, hlc);
 CREATE INDEX ix_change_log_entity ON change_log(entity, entity_id);
+CREATE INDEX ix_change_log_hlc ON change_log(hlc);                                -- clock restore (ADR-0010)
 
 CREATE TABLE field_clock (
     entity      TEXT NOT NULL,

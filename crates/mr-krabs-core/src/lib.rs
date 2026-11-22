@@ -14,8 +14,6 @@ use mrk_domain::{BudgetLineRow, CategoryKind, CategoryNode, plan_merge};
 use mrk_money::{Currency, CurrencyCode, Money, parse_es_cl};
 use mrk_store::{CategoryMergeWrite, SeedReport, Store};
 
-pub use mrk_store::Stamp;
-
 pub use api::{ApiError, ErrorCode, HealthDto, MoneyDto, MoneyInput};
 
 /// Version of the core, reported to the UI.
@@ -26,17 +24,21 @@ pub struct App {
 }
 
 impl App {
-    /// Opens (or creates) the database at `db_path` and runs pending migrations.
+    /// Opens (or creates) the database at `db_path`, runs pending migrations and creates the
+    /// local device on first open.
     pub fn open(db_path: &Path) -> Result<Self, ApiError> {
-        let mut store = Store::open(db_path).map_err(ApiError::internal)?;
-        store.migrate().map_err(ApiError::internal)?;
-        Ok(Self { store })
+        Self::ready(Store::open(db_path).map_err(ApiError::internal)?)
     }
 
     /// In-memory app for tests.
     pub fn open_in_memory() -> Result<Self, ApiError> {
-        let mut store = Store::open_in_memory().map_err(ApiError::internal)?;
+        Self::ready(Store::open_in_memory().map_err(ApiError::internal)?)
+    }
+
+    /// Migrates, then makes sure the local device exists and its clock is restored.
+    fn ready(mut store: Store) -> Result<Self, ApiError> {
         store.migrate().map_err(ApiError::internal)?;
+        store.ensure_local_device().map_err(ApiError::internal)?;
         Ok(Self { store })
     }
 
@@ -87,16 +89,8 @@ impl App {
     /// Deletes a category (FR-BU-07). With `merge_into`, everything that references it moves
     /// there first (postings, budget lines with colliding months summed, sub-categories, payee
     /// defaults, rules, recurring templates, staged rows). Without it, the category must be
-    /// unused.
-    ///
-    /// `stamp` is the HLC time of this edit. Until device identity and the clock land (M1)
-    /// the caller supplies it; no change-log entry is written yet (sync milestone).
-    pub fn category_delete(
-        &mut self,
-        id: &str,
-        merge_into: Option<&str>,
-        stamp: &Stamp,
-    ) -> Result<(), ApiError> {
+    /// unused. Every row it touches is stamped by the local clock and logged (ADR-0010).
+    pub fn category_delete(&mut self, id: &str, merge_into: Option<&str>) -> Result<(), ApiError> {
         let nodes = self.category_nodes()?;
         if !nodes.iter().any(|n| n.id == id && n.live) {
             return Err(ApiError::new(
@@ -114,10 +108,7 @@ impl App {
                     "the category has transactions, budgets or sub-categories: choose a category to merge it into",
                 ));
             }
-            return self
-                .store
-                .delete_category(id, stamp)
-                .map_err(ApiError::internal);
+            return self.store.delete_category(id).map_err(ApiError::internal);
         };
         let lines = self
             .store
@@ -149,7 +140,7 @@ impl App {
                 .collect(),
         };
         self.store
-            .apply_category_merge(&write, stamp)
+            .apply_category_merge(&write)
             .map_err(ApiError::internal)
     }
 
@@ -279,13 +270,6 @@ mod tests {
         .collect()
     }
 
-    fn stamp() -> Stamp {
-        Stamp {
-            hlc: 42,
-            device: "dev-a".into(),
-        }
-    }
-
     fn sid(key: &str) -> String {
         seed::seed_id(key)
     }
@@ -335,7 +319,7 @@ mod tests {
         let mut app = app_with_household("es-CL");
         app.seed_household_defaults().unwrap();
         let cinema = sid("expense.leisure.cinema");
-        app.category_delete(&cinema, None, &stamp()).unwrap();
+        app.category_delete(&cinema, None).unwrap();
         app.seed_household_defaults().unwrap();
         let deleted: i64 = app
             .store
@@ -420,8 +404,7 @@ mod tests {
             ))
             .unwrap();
 
-        app.category_delete(&supermarket, Some(&delivery), &stamp())
-            .unwrap();
+        app.category_delete(&supermarket, Some(&delivery)).unwrap();
 
         let c = app.store.connection();
         let one = |sql: &str| -> String { c.query_row(sql, [], |r| r.get(0)).unwrap() };
@@ -443,14 +426,21 @@ mod tests {
             one("SELECT category_id FROM budget_line WHERE id = 'b2'"),
             delivery
         );
-        let merged: (i64, String, i64) = c
+        let merged: (i64, String, String) = c
             .query_row(
-                "SELECT deleted, merged_into_id, hlc FROM category WHERE id = ?1",
+                "SELECT deleted, merged_into_id, hlc_device FROM category WHERE id = ?1",
                 [&supermarket],
                 |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
             )
             .unwrap();
-        assert_eq!(merged, (1, delivery.clone(), 42));
+        assert_eq!(
+            merged,
+            (
+                1,
+                delivery.clone(),
+                app.store.local_device_id().unwrap().to_owned()
+            )
+        );
         assert_eq!(app.store.category_reference_count(&supermarket).unwrap(), 0);
         assert_eq!(num("SELECT count(*) FROM pragma_foreign_key_check"), 0);
     }
@@ -460,14 +450,14 @@ mod tests {
         let mut app = app_with_household("es-CL");
         app.seed_household_defaults().unwrap();
         let food = sid("expense.food");
-        let err = app.category_delete(&food, None, &stamp()).unwrap_err();
+        let err = app.category_delete(&food, None).unwrap_err();
         assert_eq!(err.code, ErrorCode::Validation);
         let err = app
-            .category_delete(&food, Some(&sid("income.salary")), &stamp())
+            .category_delete(&food, Some(&sid("income.salary")))
             .unwrap_err();
         assert_eq!(err.code, ErrorCode::Validation);
         let err = app
-            .category_delete(&food, Some(&sid("expense.food.delivery")), &stamp())
+            .category_delete(&food, Some(&sid("expense.food.delivery")))
             .unwrap_err();
         assert_eq!(
             err.code,
@@ -475,9 +465,7 @@ mod tests {
             "merging into its own sub-category"
         );
         assert_eq!(
-            app.category_delete("nope", None, &stamp())
-                .unwrap_err()
-                .code,
+            app.category_delete("nope", None).unwrap_err().code,
             ErrorCode::NotFound
         );
     }

@@ -1985,7 +1985,12 @@ dependencies = [
 name = "mrk-store"
 version = "0.1.0"
 dependencies = [
+ "mrk-sync",
+ "proptest",
  "rusqlite",
+ "serde_json",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]
