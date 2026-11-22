@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 use mrk_domain::{
     AccountInfo, DomainError, EntryKind, JournalEntry, LedgerContext, Leg, LegStatus, NewTx,
-    Posting, StoredLeg, TxType, classify, roles, validate_civil_date,
+    Posting, StoredLeg, TxType, classify, ensure_unlocked, plan_update, roles, validate_civil_date,
 };
 use mrk_money::Money;
 use mrk_store::{EntryFilter, EntryRow, PostingRow, ScopeFilter, Visibility};
@@ -31,6 +31,7 @@ const MINUS: char = '\u{2212}';
 
 /// A checked `NewTxInput`: the transaction, its legs and its header.
 struct Checked {
+    tx: NewTx,
     entry: JournalEntry,
     date: String,
     description: String,
@@ -155,6 +156,138 @@ impl App {
         })
     }
 
+    pub fn tx_update(&mut self, id: String, input: NewTxInput) -> Result<TxDetailDto, ApiError> {
+        command("tx_update", || {
+            let (entry, legs) = self.editable(&id)?;
+            if entry.deleted {
+                return Err(not_found(&id));
+            }
+            // Locked before anything else: a reconciled entry answers CONFLICT whatever the
+            // edit, header-only included (X-6 F1).
+            ensure_unlocked(&legs).map_err(domain_error)?;
+            // The header is checked even when the legs don't change (X-6 F15).
+            let c = check_input(&input)?;
+            let ctx = self.ledger_context(&c.entry.postings())?;
+            let plan = plan_update(&legs, &c.tx, &ctx).map_err(|e| tx_error(Some(&input), e))?;
+            if !plan.counter_leg.changes.is_empty() {
+                self.check_category(&plan.entry)?;
+            }
+            let vis = self.visibility(&plan.entry.postings())?;
+            self.store.write(|w| {
+                w.update_entry(
+                    &EntryRow {
+                        entry_date: c.date,
+                        description: c.description,
+                        memo: c.memo,
+                        ..entry.clone()
+                    },
+                    vis,
+                )?;
+                // In place, ids kept (Q6). A leg that becomes an account leg is cleared; one
+                // that stops being one loses its status (X-6 F4, `posting_row`).
+                for leg in [&plan.account_leg, &plan.counter_leg] {
+                    let status = legs
+                        .iter()
+                        .find(|l| l.id == leg.id)
+                        .and_then(|l| l.status)
+                        .unwrap_or(LegStatus::Cleared);
+                    w.update_posting(
+                        &posting_row(leg.id.clone(), &entry.id, &leg.posting, status),
+                        vis,
+                    )?;
+                }
+                Ok::<_, ApiError>(())
+            })?;
+            tracing::debug!(entry = %id, "transaction updated");
+            self.detail(&id)
+        })
+    }
+
+    pub fn tx_delete(&mut self, id: String) -> Result<(), ApiError> {
+        command("tx_delete", || {
+            let (entry, legs) = self.editable(&id)?;
+            if entry.deleted {
+                return Ok(());
+            }
+            ensure_unlocked(&legs).map_err(domain_error)?;
+            self.set_deleted(&entry, &legs, true)
+        })
+    }
+
+    pub fn tx_restore(&mut self, id: String) -> Result<(), ApiError> {
+        command("tx_restore", || {
+            let (entry, legs) = self.editable(&id)?;
+            if !entry.deleted {
+                return Ok(());
+            }
+            ensure_unlocked(&legs).map_err(domain_error)?;
+            // The accounts and category may have changed since: the entry must still be one
+            // that could be written today.
+            let (account, counter) = roles(&legs).map_err(internal)?;
+            let journal = JournalEntry {
+                tx_type: match tx_kind(&entry, &legs)? {
+                    TxKind::Expense => TxType::Expense,
+                    TxKind::Income => TxType::Income,
+                    TxKind::Transfer => TxType::Transfer,
+                    TxKind::OpeningBalance => TxType::OpeningBalance,
+                },
+                account_leg: account.posting.clone(),
+                counter_leg: counter.posting.clone(),
+            };
+            journal
+                .validate(&self.ledger_context(&journal.postings())?)
+                .map_err(|e| tx_error(None, e))?;
+            self.check_category(&journal)?;
+            self.set_deleted(&entry, &legs, false)
+        })
+    }
+
+    /// A regular entry the `tx_*` commands may change: opening balances belong to their
+    /// account (`account_update`, Q-transactions-2).
+    fn editable(&self, id: &str) -> Result<(EntryRow, Vec<StoredLeg>), ApiError> {
+        let (entry, legs) = self.stored_entry(id)?;
+        if entry.kind == OPENING_BALANCE {
+            return Err(ApiError::new(
+                ErrorCode::Validation,
+                "an opening balance is edited on its account",
+            ));
+        }
+        Ok((entry, legs))
+    }
+
+    /// Soft-deletes or restores the entry and its postings in one transaction (FR-TX-08).
+    fn set_deleted(
+        &self,
+        entry: &EntryRow,
+        legs: &[StoredLeg],
+        deleted: bool,
+    ) -> Result<(), ApiError> {
+        let postings: Vec<Posting> = legs.iter().map(|l| l.posting.clone()).collect();
+        let vis = self.visibility(&postings)?;
+        let rows = self.store.entry_postings(&entry.id)?;
+        self.store.write(|w| {
+            w.update_entry(
+                &EntryRow {
+                    deleted,
+                    ..entry.clone()
+                },
+                vis,
+            )?;
+            for p in &rows {
+                w.update_posting(
+                    &PostingRow {
+                        deleted,
+                        ..p.clone()
+                    },
+                    vis,
+                )?;
+            }
+            Ok::<_, ApiError>(())
+        })?;
+        tracing::debug!(entry = %entry.id, deleted, "transaction deleted flag set");
+        Ok(())
+    }
+
     /// Validates `entry` against the live accounts and categories it posts to and writes it,
     /// with both postings, in one transaction. A refused entry writes nothing.
     fn insert_tx(
@@ -255,10 +388,7 @@ impl App {
     /// An entry by id with the postings that share its liveness.
     fn stored_entry(&self, id: &str) -> Result<(EntryRow, Vec<StoredLeg>), ApiError> {
         check_id(id)?;
-        let entry = self
-            .store
-            .entry(id)?
-            .ok_or_else(|| ApiError::new(ErrorCode::NotFound, format!("no transaction {id}")))?;
+        let entry = self.store.entry(id)?.ok_or_else(|| not_found(id))?;
         let legs = self
             .store
             .entry_postings(id)?
@@ -428,6 +558,7 @@ fn check_input(input: &NewTxInput) -> Result<Checked, ApiError> {
     };
     Ok(Checked {
         entry: tx.expand().map_err(|e| tx_error(Some(input), e))?,
+        tx,
         date: date.clone(),
         description: description.unwrap_or_default(),
         memo: memo.unwrap_or_default(),
@@ -466,6 +597,10 @@ fn tx_error(input: Option<&NewTxInput>, e: DomainError) -> ApiError {
         (Some(_), Some((path, reason))) => api.with_field(path, format!("errors.field.{reason}")),
         _ => api,
     }
+}
+
+fn not_found(id: &str) -> ApiError {
+    ApiError::new(ErrorCode::NotFound, format!("no transaction {id}"))
 }
 
 fn internal(e: DomainError) -> ApiError {

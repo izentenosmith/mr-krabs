@@ -5,7 +5,7 @@
 
 use std::collections::BTreeSet;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use mr_krabs_core::commands::{COMMANDS, dispatch};
 use mr_krabs_core::seed::seed_id;
@@ -968,8 +968,10 @@ fn a18_abuse_non_uuid_ids_oversized_text_and_overflow_are_refused_and_sql_is_sto
     env.create(edge);
 }
 
-/// Captures every event at `info` and above while `f` runs on this thread.
-fn info_log(f: impl FnOnce()) -> String {
+/// Captures every event at `info` and above that `f` emits. One global subscriber serves the
+/// whole test binary (a thread-local one races other tests over tracing's callsite cache);
+/// `f` runs on its own named thread and only that thread's lines are returned.
+fn info_log(f: impl FnOnce() + Send) -> String {
     #[derive(Clone, Default)]
     struct Buf(Arc<Mutex<Vec<u8>>>);
     impl std::io::Write for Buf {
@@ -981,16 +983,35 @@ fn info_log(f: impl FnOnce()) -> String {
             Ok(())
         }
     }
-    let buf = Buf::default();
-    let writer = buf.clone();
-    let subscriber = tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::INFO)
-        .with_ansi(false)
-        .with_writer(move || writer.clone())
-        .finish();
-    tracing::subscriber::with_default(subscriber, f);
+    static LOG: OnceLock<Buf> = OnceLock::new();
+    let buf = LOG.get_or_init(|| {
+        let buf = Buf::default();
+        let writer = buf.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::INFO)
+            .with_ansi(false)
+            .with_thread_names(true)
+            .with_writer(move || writer.clone())
+            .finish();
+        tracing::subscriber::set_global_default(subscriber).unwrap();
+        buf
+    });
+    const THREAD: &str = "s5-info-capture";
+    std::thread::scope(|s| {
+        std::thread::Builder::new()
+            .name(THREAD.into())
+            .spawn_scoped(s, f)
+            .unwrap()
+            .join()
+            .unwrap();
+    });
     let bytes = buf.0.lock().unwrap().clone();
-    String::from_utf8(bytes).unwrap()
+    String::from_utf8(bytes)
+        .unwrap()
+        .lines()
+        .filter(|l| l.contains(THREAD))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[test]
