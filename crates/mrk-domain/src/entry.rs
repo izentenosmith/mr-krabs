@@ -275,19 +275,22 @@ pub fn ensure_unlocked(legs: &[StoredLeg]) -> Result<(), DomainError> {
 
 /// Plans rewriting `existing` as `new`, keeping both posting ids (design Q6): each stored leg
 /// keeps its role, so a type change converts the counter leg in place and no leg is dropped
-/// or added. The new entry is validated first; an edit of a locked entry is refused.
+/// or added. An update that changes no leg succeeds as is (the legs were validated when they
+/// were written, so history on a since-archived account stays editable as a no-op). Any
+/// change is refused when the entry is locked, and otherwise the new entry is validated.
 pub fn plan_update(
     existing: &[StoredLeg],
     new: &NewTx,
     ctx: &LedgerContext,
 ) -> Result<UpdatePlan, DomainError> {
     let entry = new.expand()?;
-    entry.validate(ctx)?;
     let (account, counter) = roles(existing)?;
     let account_leg = rewrite(account, &entry.account_leg);
     let counter_leg = rewrite(counter, &entry.counter_leg);
     if !(account_leg.changes.is_empty() && counter_leg.changes.is_empty()) {
+        // Locked before invalid: a reconciled entry answers CONFLICT whatever the edit.
         ensure_unlocked(existing)?;
+        entry.validate(ctx)?;
     }
     Ok(UpdatePlan {
         entry,

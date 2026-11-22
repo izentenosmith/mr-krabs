@@ -617,3 +617,28 @@ fn f2_validate_rejects_wrong_leg_kinds_for_the_type() {
         assert_eq!(tx.expand().unwrap().validate(&ctx()), Ok(()));
     }
 }
+
+#[test]
+fn f3_unchanged_update_on_archived_account_succeeds_and_lock_comes_first() {
+    let tx = expense("old", "supermercado", clp(10));
+    let legs = stored_cleared(&tx.expand().unwrap(), ["a", "b"]);
+    let plan = plan_update(&legs, &tx, &ctx()).unwrap();
+    assert!(plan.account_leg.changes.is_empty() && plan.counter_leg.changes.is_empty());
+    // Contrast: a real change on the archived account is still refused.
+    assert_eq!(
+        plan_update(&legs, &expense("old", "supermercado", clp(11)), &ctx()),
+        Err(DomainError::ArchivedAccount("old".into()))
+    );
+    // A locked entry answers "locked" even when the edit is also invalid.
+    let locked = stored(
+        &tx.expand().unwrap(),
+        ["a", "b"],
+        [Some(LegStatus::Reconciled), None],
+    );
+    assert_eq!(
+        plan_update(&locked, &expense("old", "supermercado", clp(11)), &ctx()),
+        Err(DomainError::ReconciledEntryLocked {
+            posting_id: "a".into()
+        })
+    );
+}
