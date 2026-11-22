@@ -259,3 +259,31 @@ describe("TransactionsPage paging", () => {
     expect(api.tx.list).toHaveBeenLastCalledWith(expect.objectContaining({ cursor: "next" }));
   });
 });
+
+describe("TransactionsPage filter", () => {
+  it("re-queries tx_list when accountId changes, and without it when cleared (F4)", async () => {
+    api.account.list.mockResolvedValue(accounts);
+    api.tx.list.mockResolvedValue({ items: [row], nextCursor: null });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const ui = (accountId?: string) => (
+      <QueryClientProvider client={client}>
+        <TransactionsPage
+          accountId={accountId}
+          onAccountIdChange={vi.fn()}
+          categories={{ expense: [], income: [] }}
+        />
+      </QueryClientProvider>
+    );
+    const { rerender } = render(ui("a1"));
+    await waitFor(() =>
+      expect(api.tx.list).toHaveBeenLastCalledWith(expect.objectContaining({ accountId: "a1" })),
+    );
+    rerender(ui("a2"));
+    await waitFor(() =>
+      expect(api.tx.list).toHaveBeenLastCalledWith(expect.objectContaining({ accountId: "a2" })),
+    );
+    rerender(ui(undefined));
+    await waitFor(() => expect(api.tx.list).toHaveBeenCalledTimes(3));
+    expect(api.tx.list.mock.calls[2]?.[0]?.accountId).toBeUndefined();
+  });
+});
