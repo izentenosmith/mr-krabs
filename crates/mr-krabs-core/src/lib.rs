@@ -57,8 +57,7 @@ impl App {
         let currency = Currency::built_in(&input.currency).ok_or_else(|| {
             ApiError::validation(format!("unsupported currency {:?}", input.currency))
         })?;
-        let minor =
-            parse_es_cl(&input.amount, currency.minor_units).map_err(ApiError::validation)?;
+        let minor = parse_es_cl(&input.amount, currency).map_err(ApiError::validation)?;
         Ok(MoneyDto::from_money(mrk_money::Money::new(
             minor,
             currency.code,
@@ -220,6 +219,27 @@ mod tests {
             })
             .unwrap_err();
         assert_eq!(err.code, ErrorCode::Validation);
+    }
+
+    /// X-12: a currency marker must name the currency being parsed.
+    #[test]
+    fn money_parse_checks_the_marker_against_the_currency() {
+        let app = App::open_in_memory().unwrap();
+        let parse = |amount: &str, currency: &str| {
+            app.money_parse(MoneyInput {
+                amount: amount.into(),
+                currency: currency.into(),
+            })
+        };
+        assert_eq!(parse("€10", "CLP").unwrap_err().code, ErrorCode::Validation);
+        assert_eq!(parse("$10", "CLP").unwrap().minor, "10");
+        assert_eq!(parse("US$10", "USD").unwrap().minor, "1000");
+        assert_eq!(parse("10", "CLP").unwrap().minor, "10");
+        let eur = parse("€1.234,56", "EUR").unwrap();
+        assert_eq!(
+            (eur.minor.as_str(), eur.display.as_str()),
+            ("123456", "€1.234,56")
+        );
     }
 
     #[test]
