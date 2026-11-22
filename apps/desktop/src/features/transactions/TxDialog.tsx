@@ -3,15 +3,37 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useTranslation } from "react-i18next";
-import { CircleAlert, Hourglass } from "lucide-react";
-import { ApiError, type AccountDto, type NewTxInput, type TxDetailDto } from "@mr-krabs/api-client";
+import type { AccountDto, NewTxInput, TxDetailDto } from "@mr-krabs/api-client";
 
+import { Field, controlClass } from "@/components/form/Field";
+import { FormError } from "@/components/form/FormError";
+import { MoneyInput } from "@/components/form/MoneyInput";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-
-import { errorCopyKey, isFieldErrorKey, serverFieldErrors, type TxField } from "./txErrors";
+import { applyServerErrors, fieldMessage } from "@/lib/api-errors";
 
 const TYPES = ["expense", "income", "transfer"] as const satisfies readonly NewTxInput["type"][];
+
+/** The dialog's form fields (a transfer's source account is `accountId`). */
+type TxField = "accountId" | "categoryId" | "toAccountId" | "amount" | "date" | "description" | "memo";
+
+/**
+ * `ApiError.fields` wire paths of `NewTxInput` (X-8) → the form field that shows them, for
+ * the fields visible for `type`. A path for a hidden field reaches the form-level error.
+ */
+function fieldMapFor(type: (typeof TYPES)[number]): Partial<Record<string, TxField>> {
+  const common = {
+    amount: "amount",
+    "amount.amount": "amount",
+    "amount.currency": "amount",
+    date: "date",
+    description: "description",
+    memo: "memo",
+  } as const;
+  return type === "transfer"
+    ? { ...common, fromAccountId: "accountId", toAccountId: "toAccountId" }
+    : { ...common, accountId: "accountId", categoryId: "categoryId" };
+}
 
 const REQUIRED = "errors.field.required";
 const present = (s: string) => s.trim() !== "";
@@ -112,62 +134,6 @@ function toInput(v: FormValues, accounts: AccountDto[]): NewTxInput {
   return { type: v.type, accountId: v.accountId, categoryId: v.categoryId, amount, ...text };
 }
 
-const control =
-  "border-input h-9 w-full rounded-md border bg-transparent px-3 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50";
-
-function Field({
-  id,
-  label,
-  error,
-  children,
-}: {
-  id: string;
-  label: string;
-  error?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="grid gap-1.5">
-      <label htmlFor={id} className="text-sm font-medium">
-        {label}
-      </label>
-      {children}
-      {error && (
-        <p id={`${id}-error`} className="text-destructive flex items-center gap-1 text-xs">
-          <CircleAlert aria-hidden className="size-3.5" />
-          {error}
-        </p>
-      )}
-    </div>
-  );
-}
-
-/** The form-level line above the footer (MASTER §7.1, §7.2). */
-function FormMessage({ text, notAvailable }: { text?: string; notAvailable: boolean }) {
-  if (!text) return null;
-  if (notAvailable) {
-    return (
-      <p role="status" className="text-muted-foreground flex items-center gap-2 text-sm">
-        <Hourglass aria-hidden className="size-4" />
-        {text}
-      </p>
-    );
-  }
-  return (
-    <p role="alert" className="text-destructive flex items-center gap-2 text-sm">
-      <CircleAlert aria-hidden className="size-4" />
-      {text}
-    </p>
-  );
-}
-
-/** `aria-*` that ties a control to its error line (MASTER §7.1). */
-function invalid(id: string, error: string | undefined) {
-  return error ? { "aria-invalid": true, "aria-describedby": `${id}-error` } : {};
-}
-
-const idOf = (field: TxField) => `tx-${field}`;
-
 /** `<option>`s for the household's accounts. */
 export function AccountOptions({ accounts }: { accounts: AccountDto[] }) {
   return accounts.map((a) => (
@@ -188,23 +154,13 @@ export function TxDialog({
   onSubmit,
   onDelete,
 }: TxDialogProps) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const { register, handleSubmit, watch, setError, setValue, getValues, formState } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: defaults(initial),
   });
-  // Messages are i18n keys (ours or the server's); an unknown key gets the generic text.
-  const err = (field: TxField) => {
-    const key = formState.errors[field]?.message;
-    if (!key) return undefined;
-    return isFieldErrorKey(key) && i18n.exists(key) ? t(key as never) : t("errors.field.invalid");
-  };
-  /** Everything a control needs for `field`: id, form binding and error wiring. */
-  const bind = (field: TxField) => ({
-    id: idOf(field),
-    ...register(field),
-    ...invalid(idOf(field), err(field)),
-  });
+  // Messages are i18n keys (ours or the server's); `Field` wires id and aria (MASTER §7.1).
+  const err = (field: TxField) => fieldMessage(t, formState.errors[field]?.message);
   const type = watch("type");
   const accountId = watch("accountId");
   const currency = accounts.find((a) => a.id === accountId)?.currency;
@@ -236,14 +192,7 @@ export function TxDialog({
     try {
       await onSubmit(toInput(v, accounts));
     } catch (raw) {
-      const error = ApiError.from(raw);
-      const { placed, unplaced } = serverFieldErrors(error, (field) =>
-        field === "categoryId" ? v.type !== "transfer" : field === "toAccountId" ? v.type === "transfer" : true,
-      );
-      for (const [field, key] of placed) setError(field, { message: key });
-      if (placed.length === 0 || unplaced) {
-        setError("root", { type: error.code, message: errorCopyKey(error.code) });
-      }
+      applyServerErrors(raw, setError, fieldMapFor(v.type));
     }
   });
 
@@ -267,27 +216,23 @@ export function TxDialog({
             ))}
           </fieldset>
 
-          <Field
-            id={idOf("accountId")}
-            label={t(type === "transfer" ? "tx.form.from" : "tx.form.account")}
-            error={err("accountId")}
-          >
-            <select {...bind("accountId")} className={control}>
+          <Field label={t(type === "transfer" ? "tx.form.from" : "tx.form.account")} error={err("accountId")}>
+            <select {...register("accountId")} className={controlClass}>
               <option value="">{t("tx.form.choose")}</option>
               <AccountOptions accounts={accounts} />
             </select>
           </Field>
 
           {type === "transfer" ? (
-            <Field key="to" id={idOf("toAccountId")} label={t("tx.form.to")} error={err("toAccountId")}>
-              <select {...bind("toAccountId")} className={control}>
+            <Field key="to" label={t("tx.form.to")} error={err("toAccountId")}>
+              <select {...register("toAccountId")} className={controlClass}>
                 <option value="">{t("tx.form.choose")}</option>
                 <AccountOptions accounts={accounts} />
               </select>
             </Field>
           ) : (
-            <Field key="category" id={idOf("categoryId")} label={t("tx.form.category")} error={err("categoryId")}>
-              <select {...bind("categoryId")} className={control}>
+            <Field key="category" label={t("tx.form.category")} error={err("categoryId")}>
+              <select {...register("categoryId")} className={controlClass}>
                 <option value="">{t("tx.form.choose")}</option>
                 {categoryOptions.map((c) => (
                   <option key={c.id} value={c.id}>
@@ -299,41 +244,22 @@ export function TxDialog({
           )}
 
           <div className="grid grid-cols-2 gap-4">
-            <Field id={idOf("amount")} label={t("tx.form.amount")} error={err("amount")}>
-              <div className="relative">
-                <input
-                  inputMode="decimal"
-                  autoComplete="off"
-                  {...bind("amount")}
-                  className={`${control} pr-12 text-right tabular-nums`}
-                />
-                {currency && (
-                  <span className="text-muted-foreground pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs">
-                    {currency}
-                  </span>
-                )}
-              </div>
+            <Field label={t("tx.form.amount")} error={err("amount")}>
+              <MoneyInput currency={currency ?? ""} {...register("amount")} />
             </Field>
-            <Field id={idOf("date")} label={t("tx.form.date")} error={err("date")}>
-              <input type="date" {...bind("date")} className={control} />
+            <Field label={t("tx.form.date")} error={err("date")}>
+              <input type="date" {...register("date")} className={controlClass} />
             </Field>
           </div>
 
-          <Field
-            id={idOf("description")}
-            label={t("tx.form.description")}
-            error={err("description")}
-          >
-            <input {...bind("description")} className={control} />
+          <Field label={t("tx.form.description")} error={err("description")}>
+            <input {...register("description")} className={controlClass} />
           </Field>
-          <Field id={idOf("memo")} label={t("tx.form.memo")} error={err("memo")}>
-            <input {...bind("memo")} className={control} />
+          <Field label={t("tx.form.memo")} error={err("memo")}>
+            <input {...register("memo")} className={controlClass} />
           </Field>
 
-          <FormMessage
-            notAvailable={formState.errors.root?.type === "NOT_IMPLEMENTED"}
-            text={formState.errors.root?.message && t(formState.errors.root.message as never)}
-          />
+          <FormError code={formState.errors.root?.server?.type as string | undefined} />
 
           <DialogFooter>
             {onDelete && (

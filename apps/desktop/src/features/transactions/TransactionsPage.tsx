@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { CircleAlert, Hourglass, Inbox, Plus } from "lucide-react";
+import { Inbox, Plus } from "lucide-react";
 import { toast } from "sonner";
 import {
   api,
@@ -12,11 +12,14 @@ import {
   type View,
 } from "@mr-krabs/api-client";
 
+import { ErrorAlert } from "@/components/ErrorAlert";
+import { NotAvailable } from "@/components/NotAvailable";
 import { Button } from "@/components/ui/button";
+import { accountsKey } from "@/features/accounts/AccountsSidebarContainer";
+import { errorCopyKey, isNotImplemented } from "@/lib/api-errors";
 
 import { StateBlock } from "./StateBlock";
 import { TransactionsTable } from "./TransactionsTable";
-import { errorCopyKey } from "./txErrors";
 import { AccountOptions, TxDialog, type CategoryOptions } from "./TxDialog";
 
 export type { CategoryOption, CategoryOptions } from "./TxDialog";
@@ -32,26 +35,23 @@ const NO_ROWS: TxRowDto[] = [];
 // M1 has one member, so the combined view is everything (Q1); the lens switcher (M3) sets it.
 const VIEW: View = "combined";
 const UNDO_MS = 8000; // MASTER §7.2 undo toast
-// The accounts sidebar's query prefix (S6 `accountsKey`); import it once S6 is on dev.
-const ACCOUNTS_KEY = ["accounts"] as const;
 
-/** The open dialog; `key` identifies one opening so late answers can't touch a newer one. */
-/** A failed load: the code's copy (MASTER §7.1 form-level style) and a retry. */
-function ErrorAlert({ error, onRetry }: { error: unknown; onRetry: () => void }) {
+/** A failed load: the code's copy (MASTER §7.1) and a retry. */
+function LoadError({ error, onRetry }: { error: unknown; onRetry: () => void }) {
   const { t } = useTranslation();
   return (
     <div className="flex flex-col items-start gap-3">
-      <p role="alert" className="text-destructive flex items-center gap-2 text-sm">
-        <CircleAlert aria-hidden className="size-4" />
-        {t(errorCopyKey(ApiError.from(error).code))}
-      </p>
+      <ErrorAlert>
+        <p>{t(errorCopyKey(ApiError.from(error).code))}</p>
+      </ErrorAlert>
       <Button variant="outline" onClick={onRetry}>
-        {t("tx.retry")}
+        {t("shell.retry")}
       </Button>
     </div>
   );
 }
 
+/** The open dialog; `key` identifies one opening so late answers can't touch a newer one. */
 type OpenDialog = ({ mode: "create" } | { mode: "edit"; detail: TxDetailDto }) & { key: number };
 
 export function TransactionsPage({
@@ -67,7 +67,7 @@ export function TransactionsPage({
   const close = (key: number) => setDialog((d) => (d?.key === key ? null : d));
   const accounts = useQuery({
     // Same key and arguments as the accounts sidebar (S6), so both share one cache entry.
-    queryKey: [...ACCOUNTS_KEY, "list", { includeArchived: false }],
+    queryKey: [...accountsKey, "list", { includeArchived: false }],
     queryFn: () => api.account.list({ view: VIEW, includeArchived: false }),
   });
   const accountOptions = accounts.data?.map((s) => s.account) ?? [];
@@ -81,13 +81,13 @@ export function TransactionsPage({
   // Stable across renders that don't change the pages, so the table keeps its row model (F31).
   const rows = useMemo(() => list.data?.pages.flatMap((p) => p.items) ?? NO_ROWS, [list.data]);
   // Q12: the core answers NOT_IMPLEMENTED until the transactions slice lands.
-  const notAvailable = list.error && ApiError.from(list.error).code === "NOT_IMPLEMENTED";
+  const notAvailable = list.isError && isNotImplemented(list.error);
 
   // Balances and lists change with every write (sidebar balances live under "accounts").
   const refresh = () =>
     Promise.all([
       queryClient.invalidateQueries({ queryKey: ["tx"] }),
-      queryClient.invalidateQueries({ queryKey: ACCOUNTS_KEY }),
+      queryClient.invalidateQueries({ queryKey: accountsKey }),
     ]);
 
   // Failures of actions outside a form (MASTER §7.2): an error toast with the code's copy.
@@ -162,14 +162,14 @@ export function TransactionsPage({
           <option value="">{t("tx.allAccounts")}</option>
           <AccountOptions accounts={accountOptions} />
         </select>
-        <Button onClick={openCreate} disabled={!!notAvailable}>
+        <Button onClick={openCreate} disabled={notAvailable}>
           <Plus aria-hidden />
           {t("tx.new")}
         </Button>
       </header>
       {accounts.isError && !notAvailable && (
         // One alert for both loads; its retry also retries a failed list (F43).
-        <ErrorAlert
+        <LoadError
           error={accounts.error}
           onRetry={() => {
             void accounts.refetch();
@@ -178,14 +178,14 @@ export function TransactionsPage({
         />
       )}
       {notAvailable ? (
-        <StateBlock icon={Hourglass} title={t("notAvailable.title")} body={t("notAvailable.body")} />
+        <NotAvailable className="justify-center rounded-lg border p-8" />
       ) : list.isPending ? (
         <p aria-busy className="text-muted-foreground text-sm">
-          {t("loading")}
+          {t("shell.loading")}
         </p>
       ) : list.isError && !list.data ? (
         accounts.isError ? null : (
-          <ErrorAlert error={list.error} onRetry={() => void list.refetch()} />
+          <LoadError error={list.error} onRetry={() => void list.refetch()} />
         )
       ) : rows.length === 0 ? (
         <StateBlock icon={Inbox} title={t("tx.emptyTitle")} body={t("tx.emptyBody")} />

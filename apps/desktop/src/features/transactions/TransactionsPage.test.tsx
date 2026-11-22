@@ -99,7 +99,7 @@ describe("TransactionsPage failures", () => {
     renderPage();
     fireEvent.click(await screen.findByRole("row", { name: /Feria Prueba/ }));
     expect(
-      await screen.findByText("No encontramos este registro. Actualiza la lista e intenta de nuevo."),
+      await screen.findByText("No encontramos lo que buscabas. Recarga e intenta de nuevo."),
     ).toBeInTheDocument();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
@@ -318,7 +318,7 @@ describe("TransactionsPage follow-ups", () => {
     await screen.findByRole("dialog", { name: "Editar transacción" });
     failA(new ApiError("NOT_FOUND", "developer message"));
     await new Promise((r) => setTimeout(r, 30));
-    expect(screen.queryByText(/No encontramos este registro/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/No encontramos lo que buscabas/)).not.toBeInTheDocument();
   });
 
   it("when both loads fail, one alert retries both (F43)", async () => {

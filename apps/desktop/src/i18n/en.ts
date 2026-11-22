@@ -99,7 +99,6 @@ export const en: Messages<typeof esCL> = {
       required: "This field is required",
       invalidAmount: "Invalid amount",
       tooLong: "This is too long",
-      invalid: "Check this field",
       unknown: "Check this field",
     },
     code: {
@@ -114,11 +113,6 @@ export const en: Messages<typeof esCL> = {
       TRANSPORT: "We couldn't reach the core. Try again.",
     },
   },
-  notAvailable: {
-    title: "Not available yet",
-    body: "This feature arrives in an upcoming version.",
-  },
-  loading: "Loading…",
   tx: {
     title: "Transactions",
     new: "New",
@@ -130,7 +124,6 @@ export const en: Messages<typeof esCL> = {
     transferTo: "Transfer with",
     deleted: "Transaction deleted",
     undo: "Undo",
-    retry: "Retry",
     col: {
       date: "Date",
       description: "Description",

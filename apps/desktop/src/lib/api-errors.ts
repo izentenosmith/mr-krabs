@@ -24,7 +24,10 @@ export function errorCopyKey(code: ErrorCode | string) {
  */
 export function fieldMessage(t: TFunction, key: string | undefined) {
   if (!key) return undefined;
-  return i18n.exists(key) ? t(key as "errors.field.unknown") : t("errors.field.unknown");
+  // Only `errors.field.*` keys: a server value naming any other key gets the generic copy.
+  return key.startsWith("errors.field.") && i18n.exists(key)
+    ? t(key as "errors.field.unknown")
+    : t("errors.field.unknown");
 }
 
 /**

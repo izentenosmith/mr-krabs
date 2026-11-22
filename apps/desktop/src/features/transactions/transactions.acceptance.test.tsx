@@ -317,7 +317,7 @@ describe("S7 transactions — acceptance", () => {
 
   it.each([
     ["CURRENCY_MISMATCH", "La moneda no coincide con la de la cuenta."],
-    ["UNBALANCED_ENTRY", "Los montos no cuadran. Revisa la transacción."],
+    ["UNBALANCED_ENTRY", "El movimiento no cuadra. Revisa los montos."],
     ["CONFLICT", "Esto entra en conflicto con datos existentes."],
   ] as const)("%s without fields shows its own text in the dialog", async (code, copy) => {
     api.tx.create.mockRejectedValue(new ApiError(code, "developer message"));

@@ -95,7 +95,6 @@ export const esCL = {
       required: "Este campo es obligatorio",
       invalidAmount: "Monto no válido",
       tooLong: "Es demasiado largo",
-      invalid: "Revisa este campo",
       unknown: "Revisa este campo",
     },
     code: {
@@ -110,11 +109,6 @@ export const esCL = {
       TRANSPORT: "No pudimos conectar con el núcleo. Intenta de nuevo.",
     },
   },
-  notAvailable: {
-    title: "Aún no disponible",
-    body: "Esta función llega en una próxima versión.",
-  },
-  loading: "Cargando…",
   tx: {
     title: "Transacciones",
     new: "Nuevo",
@@ -126,7 +120,6 @@ export const esCL = {
     transferTo: "Transferencia con",
     deleted: "Transacción eliminada",
     undo: "Deshacer",
-    retry: "Reintentar",
     col: {
       date: "Fecha",
       description: "Descripción",
