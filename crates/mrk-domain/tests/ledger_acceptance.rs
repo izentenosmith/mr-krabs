@@ -663,3 +663,110 @@ fn f7_balances_reject_an_as_of_that_is_not_a_civil_date() {
     // Contrast: a well-formed date is accepted.
     assert!(account_balances(&rows, "2026-11-15").is_ok());
 }
+
+// ---- Remediation (tyr-verdict iteration 2) ------------------------------------------------
+
+#[test]
+fn f11_locked_entry_refuses_any_invalid_edit_as_locked() {
+    let locked_expense = stored(
+        &expense("checking", "supermercado", clp(10))
+            .expand()
+            .unwrap(),
+        ["a", "b"],
+        [Some(LegStatus::Reconciled), None],
+    );
+    let locked_transfer = stored(
+        &transfer("checking", "savings", clp(10)).expand().unwrap(),
+        ["a", "b"],
+        [Some(LegStatus::Reconciled), Some(LegStatus::Cleared)],
+    );
+    let refused = Err(DomainError::ReconciledEntryLocked {
+        posting_id: "a".into(),
+    });
+    assert_eq!(
+        plan_update(
+            &locked_expense,
+            &expense("checking", "supermercado", clp(0)),
+            &ctx()
+        ),
+        refused
+    );
+    assert_eq!(
+        plan_update(
+            &locked_transfer,
+            &transfer("checking", "checking", clp(10)),
+            &ctx()
+        ),
+        refused
+    );
+    // Contrast: the same invalid edit of an unlocked entry is a validation error.
+    let open = stored_cleared(
+        &expense("checking", "supermercado", clp(10))
+            .expand()
+            .unwrap(),
+        ["a", "b"],
+    );
+    assert_eq!(
+        plan_update(&open, &expense("checking", "supermercado", clp(0)), &ctx()),
+        Err(DomainError::NonPositiveAmount)
+    );
+}
+
+#[test]
+fn f12_balances_reject_an_as_of_that_is_not_a_calendar_date() {
+    let rows = [row("checking", clp(7), "2026-11-10", true)];
+    for bad in [
+        "2026-99-99",
+        "2026-13-01",
+        "2026-00-10",
+        "2026-02-30",
+        "2025-02-29",
+        "2026-04-31",
+    ] {
+        assert_eq!(
+            account_balances(&rows, bad),
+            Err(DomainError::InvalidDate(bad.into())),
+            "{bad:?}"
+        );
+    }
+    // Contrast: month and leap-year boundaries that exist are accepted.
+    for good in ["2024-02-29", "2026-12-31", "2026-04-30", "2026-01-01"] {
+        assert!(account_balances(&rows, good).is_ok(), "{good:?}");
+    }
+}
+
+#[test]
+fn f13_validate_rejects_a_transfer_whose_account_leg_is_not_the_from_leg() {
+    let reversed = JournalEntry {
+        tx_type: TxType::Transfer,
+        account_leg: Posting::account("checking", clp(5)),
+        counter_leg: Posting::account("savings", clp(-5)),
+    };
+    assert_eq!(
+        reversed.validate(&ctx()),
+        Err(DomainError::LegKindMismatch {
+            declared: TxType::Transfer
+        })
+    );
+    // Contrast: the expanded transfer (from leg negative) validates.
+    let ok = transfer("checking", "savings", clp(5)).expand().unwrap();
+    assert_eq!(ok.validate(&ctx()), Ok(()));
+}
+
+#[test]
+fn f14_opening_balance_with_an_invalid_date_is_rejected() {
+    for bad in ["2026/11/15", "", "2026-02-30", "2026-11-5"] {
+        let tx = NewTx::OpeningBalance {
+            account: "checking".into(),
+            amount: clp(5),
+            date: bad.into(),
+        };
+        assert_eq!(
+            tx.expand(),
+            Err(DomainError::InvalidDate(bad.into())),
+            "{bad:?}"
+        );
+    }
+    // Contrast: the helper's date is valid.
+    assert!(opening("checking", clp(5)).expand().is_ok());
+}

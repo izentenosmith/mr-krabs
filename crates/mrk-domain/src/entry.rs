@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 
 use mrk_money::{CurrencyCode, Money};
 
+use crate::date::is_civil_date;
 use crate::ledger::{DomainError, EntryKind, Leg, Posting, classify, validate_balanced};
 
 /// The type the user chose for a transaction. Expense, income and transfer are re-derived
@@ -36,7 +37,8 @@ pub enum NewTx {
         to: String,
         amount: Money,
     },
-    /// FR-AC-03. `date` is the entry date core stores; the legs don't depend on it.
+    /// FR-AC-03. `date` is the entry date core stores (a real `YYYY-MM-DD` date, checked on
+    /// expansion); the legs don't depend on it.
     OpeningBalance {
         account: String,
         amount: Money,
@@ -151,8 +153,13 @@ impl NewTx {
                 )
             }
             Self::OpeningBalance {
-                account, amount, ..
+                account,
+                amount,
+                date,
             } => {
+                if !is_civil_date(date) {
+                    return Err(DomainError::InvalidDate(date.clone()));
+                }
                 if amount.is_zero() {
                     return Err(DomainError::ZeroAmount);
                 }
@@ -200,7 +207,8 @@ impl TxType {
 }
 
 impl JournalEntry {
-    /// The account leg is an account; the counter leg is the kind the type needs.
+    /// The account leg is an account (a transfer's negative, `from` leg); the counter leg is
+    /// the kind the type needs.
     fn legs_fit_type(&self) -> bool {
         let counter_fits = matches!(
             (self.tx_type, &self.counter_leg.leg),
@@ -208,7 +216,9 @@ impl JournalEntry {
                 | (TxType::Transfer, Leg::Account(_))
                 | (TxType::OpeningBalance, Leg::FxTrading)
         );
-        matches!(self.account_leg.leg, Leg::Account(_)) && counter_fits
+        // A transfer's account leg is the one money leaves; `roles` relies on it.
+        let direction_fits = self.tx_type != TxType::Transfer || self.account_leg.amount.minor < 0;
+        matches!(self.account_leg.leg, Leg::Account(_)) && counter_fits && direction_fits
     }
 
     /// The legs, account leg first.
@@ -283,8 +293,16 @@ pub fn plan_update(
     new: &NewTx,
     ctx: &LedgerContext,
 ) -> Result<UpdatePlan, DomainError> {
-    let entry = new.expand()?;
     let (account, counter) = roles(existing)?;
+    // The stored legs are valid, so an edit that cannot even expand is a change: a locked
+    // entry answers "locked" for it too.
+    let entry = match new.expand() {
+        Ok(entry) => entry,
+        Err(e) => {
+            ensure_unlocked(existing)?;
+            return Err(e);
+        }
+    };
     let account_leg = rewrite(account, &entry.account_leg);
     let counter_leg = rewrite(counter, &entry.counter_leg);
     if !(account_leg.changes.is_empty() && counter_leg.changes.is_empty()) {
