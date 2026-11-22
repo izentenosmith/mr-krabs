@@ -1,12 +1,19 @@
 import { useState } from "react";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { Plus } from "lucide-react";
+import { Hourglass, Inbox, Plus } from "lucide-react";
 import { toast } from "sonner";
-import { api, type NewTxInput, type TxDetailDto, type TxRowDto } from "@mr-krabs/api-client";
+import {
+  api,
+  ApiError,
+  type NewTxInput,
+  type TxDetailDto,
+  type TxRowDto,
+} from "@mr-krabs/api-client";
 
 import { Button } from "@/components/ui/button";
 
+import { StateBlock } from "./StateBlock";
 import { TransactionsTable } from "./TransactionsTable";
 import { TxDialog } from "./TxDialog";
 
@@ -53,6 +60,8 @@ export function TransactionsPage({
     getNextPageParam: (last) => last.nextCursor,
   });
   const rows = list.data?.pages.flatMap((p) => p.items) ?? [];
+  // Q12: the core answers NOT_IMPLEMENTED until the transactions slice lands.
+  const notAvailable = list.error && ApiError.from(list.error).code === "NOT_IMPLEMENTED";
 
   // Balances and lists change with every write (sidebar balances live under "account").
   const refresh = () =>
@@ -111,18 +120,28 @@ export function TransactionsPage({
             </option>
           ))}
         </select>
-        <Button onClick={() => setDialog({ mode: "create" })}>
+        <Button onClick={() => setDialog({ mode: "create" })} disabled={!!notAvailable}>
           <Plus aria-hidden />
           {t("tx.new")}
         </Button>
       </header>
-      <TransactionsTable
-        rows={rows}
-        hasMore={list.hasNextPage}
-        loadingMore={list.isFetchingNextPage}
-        onLoadMore={() => void list.fetchNextPage()}
-        onOpen={(row) => void open(row)}
-      />
+      {notAvailable ? (
+        <StateBlock icon={Hourglass} title={t("notAvailable.title")} body={t("notAvailable.body")} />
+      ) : list.isPending ? (
+        <p aria-busy className="text-muted-foreground text-sm">
+          {t("loading")}
+        </p>
+      ) : rows.length === 0 && !list.error ? (
+        <StateBlock icon={Inbox} title={t("tx.emptyTitle")} body={t("tx.emptyBody")} />
+      ) : (
+        <TransactionsTable
+          rows={rows}
+          hasMore={list.hasNextPage}
+          loadingMore={list.isFetchingNextPage}
+          onLoadMore={() => void list.fetchNextPage()}
+          onOpen={(row) => void open(row)}
+        />
+      )}
       {dialog && (
         <TxDialog
           open
