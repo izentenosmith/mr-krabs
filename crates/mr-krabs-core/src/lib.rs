@@ -11,6 +11,7 @@ pub mod commands;
 mod household;
 pub mod seed;
 mod support;
+mod transactions;
 
 use std::path::{Path, PathBuf};
 

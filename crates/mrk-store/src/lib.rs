@@ -17,7 +17,7 @@ mod households;
 mod write;
 
 pub use accounts::{AccountLegRow, AccountRow};
-pub use entries::{EntryRow, PostingRow};
+pub use entries::{EntryFilter, EntryRow, PostingRow, ScopeFilter};
 pub use households::{HouseholdRow, MemberRow};
 pub use write::Write;
 

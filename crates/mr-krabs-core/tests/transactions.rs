@@ -321,9 +321,9 @@ fn a02_create_writes_one_regular_entry_two_legs_and_three_create_log_rows() {
     assert_eq!(
         logged,
         vec![
-            ("journal_entry".into(), "create:true".into()),
-            ("posting".into(), "create:false".into()),
-            ("posting".into(), "create:false".into()),
+            ("journal_entry".into(), "upsert:true".into()),
+            ("posting".into(), "upsert:false".into()),
+            ("posting".into(), "upsert:false".into()),
         ]
     );
     for (_, _, _, fields) in &new_rows {
@@ -511,7 +511,7 @@ fn a07_update_amount_keeps_posting_ids_logs_only_amounts_and_a_resend_logs_nothi
     let new_rows: Vec<_> = env.log().into_iter().skip(before).collect();
     assert_eq!(new_rows.len(), 2, "{new_rows:?}");
     for (entity, _, op, fields) in &new_rows {
-        assert_eq!((entity.as_str(), op.as_str()), ("posting", "update"));
+        assert_eq!((entity.as_str(), op.as_str()), ("posting", "upsert"));
         assert_eq!(keys(fields), BTreeSet::from(["amount_minor".to_owned()]));
     }
     let after = env.log().len();
@@ -581,7 +581,7 @@ fn a09_header_edit_updates_date_description_and_memo_in_place() {
     let (entity, eid, op, fields) = &new_rows[0];
     assert_eq!(
         (entity.as_str(), eid.as_str(), op.as_str()),
-        ("journal_entry", id.as_str(), "update")
+        ("journal_entry", id.as_str(), "upsert")
     );
     assert_eq!(
         keys(fields),
@@ -614,7 +614,8 @@ fn a10_delete_soft_deletes_entry_and_postings_restore_brings_them_back_and_repea
     assert_eq!(rows.len(), 3, "{rows:?}");
     assert!(
         rows.iter()
-            .all(|r| keys(&r.3) == BTreeSet::from(["deleted".to_owned()]))
+            .all(|r| r.2 == "delete" && keys(&r.3) == BTreeSet::from(["deleted".to_owned()])),
+        "{rows:?}"
     );
     let after_delete = env.log().len();
     env.ok("tx_delete", json!({ "id": id }));
@@ -625,7 +626,9 @@ fn a10_delete_soft_deletes_entry_and_postings_restore_brings_them_back_and_repea
     assert!(env.list_ids(json!({ "view": "combined" })).contains(&id));
     assert_eq!(env.get(&id)["deleted"], false);
     assert_eq!(env.posting_ids(&id), ids);
-    assert_eq!(env.log().len(), after_delete + 3);
+    let restored: Vec<_> = env.log().into_iter().skip(after_delete).collect();
+    assert_eq!(restored.len(), 3, "{restored:?}");
+    assert!(restored.iter().all(|r| r.2 == "upsert"), "{restored:?}");
     env.ok("tx_restore", json!({ "id": id }));
     assert_eq!(env.log().len(), after_delete + 3);
 }
