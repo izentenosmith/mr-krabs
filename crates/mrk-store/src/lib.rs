@@ -10,11 +10,13 @@ use std::time::Duration;
 use rusqlite::Connection;
 
 mod categories;
+mod change_log;
 
 pub use categories::{
     BudgetLineAmount, CategoryMergeWrite, CategoryRow, HouseholdSettings, SeedAccount,
     SeedCategory, SeedReport, Stamp,
 };
+pub use change_log::{Row, Visibility};
 
 /// Ordered, embedded, forward-only migrations. The index + 1 is the schema version.
 pub const MIGRATIONS: &[(&str, &str)] = &[

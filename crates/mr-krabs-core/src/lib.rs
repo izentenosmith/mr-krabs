@@ -89,14 +89,12 @@ impl App {
     /// defaults, rules, recurring templates, staged rows). Without it, the category must be
     /// unused.
     ///
-    /// `stamp` is the HLC time of this edit. Until device identity and the clock land (M1)
-    /// the caller supplies it; no change-log entry is written yet (sync milestone).
-    pub fn category_delete(
-        &mut self,
-        id: &str,
-        merge_into: Option<&str>,
-        stamp: &Stamp,
-    ) -> Result<(), ApiError> {
+    pub fn category_delete(&mut self, id: &str, merge_into: Option<&str>) -> Result<(), ApiError> {
+        // Placeholder until the clock stamps changes (S1, tdd).
+        let stamp = &Stamp {
+            hlc: 42,
+            device: "dev-a".into(),
+        };
         let nodes = self.category_nodes()?;
         if !nodes.iter().any(|n| n.id == id && n.live) {
             return Err(ApiError::new(
@@ -279,13 +277,6 @@ mod tests {
         .collect()
     }
 
-    fn stamp() -> Stamp {
-        Stamp {
-            hlc: 42,
-            device: "dev-a".into(),
-        }
-    }
-
     fn sid(key: &str) -> String {
         seed::seed_id(key)
     }
@@ -335,7 +326,7 @@ mod tests {
         let mut app = app_with_household("es-CL");
         app.seed_household_defaults().unwrap();
         let cinema = sid("expense.leisure.cinema");
-        app.category_delete(&cinema, None, &stamp()).unwrap();
+        app.category_delete(&cinema, None).unwrap();
         app.seed_household_defaults().unwrap();
         let deleted: i64 = app
             .store
@@ -420,7 +411,7 @@ mod tests {
             ))
             .unwrap();
 
-        app.category_delete(&supermarket, Some(&delivery), &stamp())
+        app.category_delete(&supermarket, Some(&delivery))
             .unwrap();
 
         let c = app.store.connection();
@@ -460,14 +451,14 @@ mod tests {
         let mut app = app_with_household("es-CL");
         app.seed_household_defaults().unwrap();
         let food = sid("expense.food");
-        let err = app.category_delete(&food, None, &stamp()).unwrap_err();
+        let err = app.category_delete(&food, None).unwrap_err();
         assert_eq!(err.code, ErrorCode::Validation);
         let err = app
-            .category_delete(&food, Some(&sid("income.salary")), &stamp())
+            .category_delete(&food, Some(&sid("income.salary")))
             .unwrap_err();
         assert_eq!(err.code, ErrorCode::Validation);
         let err = app
-            .category_delete(&food, Some(&sid("expense.food.delivery")), &stamp())
+            .category_delete(&food, Some(&sid("expense.food.delivery")))
             .unwrap_err();
         assert_eq!(
             err.code,
@@ -475,7 +466,7 @@ mod tests {
             "merging into its own sub-category"
         );
         assert_eq!(
-            app.category_delete("nope", None, &stamp())
+            app.category_delete("nope", None)
                 .unwrap_err()
                 .code,
             ErrorCode::NotFound
