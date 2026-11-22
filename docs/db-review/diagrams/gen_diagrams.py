@@ -309,6 +309,8 @@ open(f"{OUT}/er-model.drawio", "w").write(wrap("Barker ER Model", er, 2400, 2500
 rel = [cell("rel-title", "Relational Model — Mr Krabs target schema rev. 3 (SQLite, STRICT; PR 14 requirements)",
             "text;fontSize=20;fontStyle=1;align=left;verticalAlign=middle;", 40, -40, 900, 30)]
 RW, ROWH = 340, 18
+# draw.io style shared by the three cells of a table row (marker, name, type)
+ROW_CELL = "shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;"
 REL_LAYOUT = {}
 # reuse column layout but with more vertical room: stack per column
 colx = {40: 40, 420: 430, 820: 820, 1220: 1210, 1620: 1600, 2020: 1990}
@@ -335,8 +337,8 @@ for t in order:
     rows = []
     for c in cols[t]:
         name, typ, notnull = c[1], c[2], c[3]
-        keys = (["PK"] if name in pkcols else []) + fkcols.get(name, []) + [a for a in akmap.get(name, [])]
-        rows.append((name, ",".join(keys), f"{typ} {'NOT NULL' if notnull or name in pkcols else 'NULL'}"))
+        markers = (["PK"] if name in pkcols else []) + fkcols.get(name, []) + [a for a in akmap.get(name, [])]
+        rows.append((name, ",".join(markers), f"{typ} {'NOT NULL' if notnull or name in pkcols else 'NULL'}"))
     notes = extra + [f"CHECK {c}" for c in chk]
     note_lines = sum(-(-len(n) // 72) for n in notes)
     h = 26 + ROWH * len(rows) + 11 * note_lines + (12 if notes else 0)
@@ -345,18 +347,18 @@ for t in order:
     rel.append(cell(tid, title, "shape=table;startSize=26;container=1;collapsible=0;childLayout=tableLayout;fixedRows=1;rowLines=0;"
                     "fontStyle=1;align=center;resizeLast=1;html=1;fillColor=" + ("#f5f5f5" if t in LOCAL_ONLY else "#d5e8d4") + ";strokeColor=#82b366;fontSize=12;",
                     x, y, RW, h))
-    for i, (name, keys, typ) in enumerate(rows):
+    for i, (name, markers, typ) in enumerate(rows):
         rid = f"rel-{t}-{name}"
         row_ids[(t, name)] = rid
         rel.append(cell(rid, "", "shape=tableRow;horizontal=0;startSize=0;swimlaneHead=0;swimlaneBody=0;fillColor=none;collapsible=0;"
                         "dropTarget=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;top=0;left=0;right=0;bottom=0;",
                         0, 26 + i * ROWH, RW, ROWH, parent=tid))
-        bold = "fontStyle=1;" if "PK" in keys else ""
-        rel.append(cell(f"{rid}-k", keys, "shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;fontSize=9;align=left;spacingLeft=3;" + bold,
+        bold = "fontStyle=1;" if "PK" in markers else ""
+        rel.append(cell(f"{rid}-k", markers, ROW_CELL + "fontSize=9;align=left;spacingLeft=3;" + bold,
                         0, 0, 70, ROWH, parent=rid))
-        rel.append(cell(f"{rid}-n", name, "shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;fontSize=10;align=left;spacingLeft=3;" + bold,
+        rel.append(cell(f"{rid}-n", name, ROW_CELL + "fontSize=10;align=left;spacingLeft=3;" + bold,
                         70, 0, 150, ROWH, parent=rid))
-        rel.append(cell(f"{rid}-t", typ, "shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;fontSize=9;align=left;spacingLeft=3;fontColor=#555555;",
+        rel.append(cell(f"{rid}-t", typ, ROW_CELL + "fontSize=9;align=left;spacingLeft=3;fontColor=#555555;",
                         220, 0, 120, ROWH, parent=rid))
     if notes:
         ny = 26 + ROWH * len(rows) + 4
