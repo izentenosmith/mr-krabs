@@ -674,7 +674,9 @@ mod tests {
             "description": "Sueldo", "memo": null
         }))
         .unwrap();
-        assert!(matches!(income, NewTxInput::Income(ref i) if i.description.as_deref() == Some("Sueldo")));
+        assert!(
+            matches!(income, NewTxInput::Income(ref i) if i.description.as_deref() == Some("Sueldo"))
+        );
         let transfer: NewTxInput = serde_json::from_value(json!({
             "type": "transfer", "fromAccountId": "a", "toAccountId": "b",
             "amount": { "amount": "100.000", "currency": "CLP" }, "date": "2026-11-21"
@@ -692,7 +694,10 @@ mod tests {
             json!({ "accountId": "a", "categoryId": "c", "amount": { "amount": "1", "currency": "CLP" }, "date": "2026-11-21" }),
             json!({ "type": "transfer", "fromAccountId": "a", "date": "2026-11-21" }),
         ] {
-            assert!(serde_json::from_value::<NewTxInput>(bad.clone()).is_err(), "{bad}");
+            assert!(
+                serde_json::from_value::<NewTxInput>(bad.clone()).is_err(),
+                "{bad}"
+            );
         }
     }
 
@@ -736,7 +741,11 @@ mod tests {
         .collect();
         assert_eq!(
             codes,
-            vec![json!("NOT_IMPLEMENTED"), json!("UNBALANCED_ENTRY"), json!("CONFLICT")]
+            vec![
+                json!("NOT_IMPLEMENTED"),
+                json!("UNBALANCED_ENTRY"),
+                json!("CONFLICT")
+            ]
         );
         assert_eq!(
             serde_json::to_value(ApiError::validation("x")).unwrap(),
