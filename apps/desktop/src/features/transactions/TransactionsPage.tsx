@@ -16,18 +16,9 @@ import { Button } from "@/components/ui/button";
 import { StateBlock } from "./StateBlock";
 import { TransactionsTable } from "./TransactionsTable";
 import { errorCopyKey } from "./txErrors";
-import { TxDialog } from "./TxDialog";
+import { TxDialog, type CategoryOptions } from "./TxDialog";
 
-export interface CategoryOption {
-  id: string;
-  name: string;
-}
-
-/** Category choices per transaction type, until `category_tree` lands (DEC-13). */
-export interface CategoryOptions {
-  expense: CategoryOption[];
-  income: CategoryOption[];
-}
+export type { CategoryOption, CategoryOptions } from "./TxDialog";
 
 export interface TransactionsPageProps {
   accountId?: string;

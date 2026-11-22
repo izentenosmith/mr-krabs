@@ -8,7 +8,6 @@ import { ApiError, type AccountDto, type NewTxInput, type TxDetailDto } from "@m
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
-import type { CategoryOptions } from "./TransactionsPage";
 import { errorCopyKey, serverFieldErrors, type TxField } from "./txErrors";
 
 type TxType = NewTxInput["type"];
@@ -39,6 +38,17 @@ const schema = z
     }
   });
 type FormValues = z.infer<typeof schema>;
+
+export interface CategoryOption {
+  id: string;
+  name: string;
+}
+
+/** Category choices per transaction type, until `category_tree` lands (DEC-13). */
+export interface CategoryOptions {
+  expense: CategoryOption[];
+  income: CategoryOption[];
+}
 
 export interface TxDialogProps {
   open: boolean;
