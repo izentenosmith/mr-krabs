@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import type { AccountDto } from "@mr-krabs/api-client";
+import { ApiError, type AccountDto } from "@mr-krabs/api-client";
 
 import { TxDialog, type TxDialogProps } from "./TxDialog";
 
@@ -66,5 +66,29 @@ describe("TxDialog", () => {
       const label = d.getByRole("radio", { name }).closest("label");
       expect(label?.className).toContain("has-[:focus-visible]:ring-[3px]");
     }
+  });
+
+  it("a field error for a control not shown, or an unmapped path, reaches the form-level alert (F16)", async () => {
+    const onSubmit = vi
+      .fn()
+      .mockRejectedValue(new ApiError("VALIDATION", "dev", { categoryId: "errors.field.required" }));
+    const { d } = renderDialog({ onSubmit });
+    fireEvent.click(d.getByRole("radio", { name: "Transferencia" }));
+    fireEvent.change(d.getByLabelText("Desde"), { target: { value: "a1" } });
+    fireEvent.change(d.getByLabelText("Hacia"), { target: { value: "a1" } });
+    fireEvent.change(d.getByLabelText("Monto"), { target: { value: "1" } });
+    fireEvent.click(d.getByRole("button", { name: "Guardar" }));
+    expect(await d.findByRole("alert")).toHaveTextContent("Revisa los datos ingresados.");
+  });
+
+  it("a server field value outside errors.field.* shows the generic field text (F17)", async () => {
+    const onSubmit = vi.fn().mockRejectedValue(new ApiError("VALIDATION", "dev", { amount: "tx.title" }));
+    const { d } = renderDialog({ onSubmit });
+    fireEvent.change(d.getByLabelText("Cuenta"), { target: { value: "a1" } });
+    fireEvent.change(d.getByLabelText("Categoría"), { target: { value: "c1" } });
+    fireEvent.change(d.getByLabelText("Monto"), { target: { value: "1" } });
+    fireEvent.click(d.getByRole("button", { name: "Guardar" }));
+    expect(await d.findByText("Revisa este campo")).toBeInTheDocument();
+    expect(d.queryByText("Transacciones")).not.toBeInTheDocument();
   });
 });

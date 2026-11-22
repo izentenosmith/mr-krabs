@@ -9,7 +9,7 @@ import { ApiError, type AccountDto, type NewTxInput, type TxDetailDto } from "@m
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
-import { errorCopyKey, serverFieldErrors, type TxField } from "./txErrors";
+import { errorCopyKey, isFieldErrorKey, serverFieldErrors, type TxField } from "./txErrors";
 
 const TYPES = ["expense", "income", "transfer"] as const satisfies readonly NewTxInput["type"][];
 
@@ -197,7 +197,7 @@ export function TxDialog({
   const err = (field: TxField) => {
     const key = formState.errors[field]?.message;
     if (!key) return undefined;
-    return i18n.exists(key) ? t(key as never) : t("errors.field.invalid");
+    return isFieldErrorKey(key) && i18n.exists(key) ? t(key as never) : t("errors.field.invalid");
   };
   /** Everything a control needs for `field`: id, form binding and error wiring. */
   const bind = (field: TxField) => ({
@@ -235,9 +235,13 @@ export function TxDialog({
       await onSubmit(toInput(v, accounts));
     } catch (raw) {
       const error = ApiError.from(raw);
-      const fields = serverFieldErrors(error);
-      for (const [field, key] of fields) setError(field, { message: key });
-      if (fields.length === 0) setError("root", { type: error.code, message: errorCopyKey(error.code) });
+      const { placed, unplaced } = serverFieldErrors(error, (field) =>
+        field === "categoryId" ? v.type !== "transfer" : field === "toAccountId" ? v.type === "transfer" : true,
+      );
+      for (const [field, key] of placed) setError(field, { message: key });
+      if (placed.length === 0 || unplaced) {
+        setError("root", { type: error.code, message: errorCopyKey(error.code) });
+      }
     }
   });
 

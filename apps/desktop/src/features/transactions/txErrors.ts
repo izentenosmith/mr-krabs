@@ -23,13 +23,23 @@ const FIELD_BY_WIRE: Record<string, TxField> = {
   memo: "memo",
 };
 
-/** Server field errors as `[form field, i18n key]` pairs; keys with no form field are dropped. */
-export function serverFieldErrors(error: ApiError): Array<[TxField, string]> {
-  return Object.entries(error.fields ?? {}).flatMap(([path, key]) => {
+/**
+ * Splits server field errors into those a visible form field can show (`[field, i18n key]`)
+ * and whether any could not be placed (no form field, or a field hidden for this type).
+ */
+export function serverFieldErrors(error: ApiError, visible: (field: TxField) => boolean) {
+  const placed: Array<[TxField, string]> = [];
+  let unplaced = false;
+  for (const [path, key] of Object.entries(error.fields ?? {})) {
     const field = FIELD_BY_WIRE[path.split(".")[0] ?? ""];
-    return field && key ? [[field, key] as [TxField, string]] : [];
-  });
+    if (field && key && visible(field)) placed.push([field, key]);
+    else unplaced = true;
+  }
+  return { placed, unplaced };
 }
+
+/** Server field values are `errors.field.<reason>` keys (X-8); anything else is generic. */
+export const isFieldErrorKey = (key: string) => key.startsWith("errors.field.");
 
 // Codes with their own copy under `errors.code.*`; anything else reads as INTERNAL.
 const COPIED = [
