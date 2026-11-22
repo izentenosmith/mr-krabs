@@ -1,9 +1,10 @@
 import { useId } from "react";
-import { ArchiveIcon, CircleAlertIcon, InboxIcon, PencilIcon, PlusIcon, UserIcon } from "lucide-react";
+import { ArchiveIcon, InboxIcon, PencilIcon, PlusIcon, UserIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { AccountSummaryDto } from "@mr-krabs/api-client";
 
 import { Button } from "@/components/ui/button";
+import { ErrorAlert } from "@/components/ErrorAlert";
 import { NotAvailable } from "@/components/NotAvailable";
 import { errorCopyKey } from "@/lib/api-errors";
 import { cn } from "@/lib/utils";
@@ -52,10 +53,9 @@ export function AccountsSidebar({
       {state.status === "notAvailable" && <NotAvailable className="px-2" />}
       {state.status === "error" && (
         <div className="flex flex-col items-start gap-2 px-2">
-          <div role="alert" className="text-destructive flex items-start gap-2 text-sm">
-            <CircleAlertIcon className="mt-0.5 size-4 shrink-0" aria-hidden />
+          <ErrorAlert>
             <p>{t(errorCopyKey(state.code))}</p>
-          </div>
+          </ErrorAlert>
           <Button variant="ghost" size="sm" onClick={onRetry}>
             {t("shell.retry")}
           </Button>

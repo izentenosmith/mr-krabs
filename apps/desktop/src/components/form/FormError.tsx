@@ -1,6 +1,6 @@
-import { CircleAlertIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
+import { ErrorAlert } from "@/components/ErrorAlert";
 import { NotAvailable } from "@/components/NotAvailable";
 import { errorCopyKey } from "@/lib/api-errors";
 
@@ -13,9 +13,8 @@ export function FormError({ code }: { code?: string }) {
   if (!code) return null;
   if (code === "NOT_IMPLEMENTED") return <NotAvailable />;
   return (
-    <div role="alert" className="text-destructive flex items-start gap-2 text-sm">
-      <CircleAlertIcon className="mt-0.5 size-4 shrink-0" aria-hidden />
+    <ErrorAlert>
       <p>{t(errorCopyKey(code))}</p>
-    </div>
+    </ErrorAlert>
   );
 }

@@ -1,11 +1,11 @@
 import { Outlet } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { CircleAlertIcon } from "lucide-react";
 import { ApiError, api } from "@mr-krabs/api-client";
 
 import { Button } from "@/components/ui/button";
 import { Toaster } from "@/components/ui/sonner";
+import { ErrorAlert } from "@/components/ErrorAlert";
 import { NotAvailable } from "@/components/NotAvailable";
 import { OnboardingForm } from "@/features/onboarding/OnboardingForm";
 import { bootstrapKey, useBootstrap } from "@/features/shell/bootstrap";
@@ -47,13 +47,10 @@ function BootstrapGate() {
     }
     return (
       <StatusScreen>
-        <div role="alert" className="text-destructive flex items-start gap-2 text-sm">
-          <CircleAlertIcon className="mt-0.5 size-4 shrink-0" aria-hidden />
-          <div>
-            <p className="font-medium">{t("shell.bootstrapError")}</p>
-            <p>{t(errorCopyKey(ApiError.from(bootstrap.error).code))}</p>
-          </div>
-        </div>
+        <ErrorAlert>
+          <p className="font-medium">{t("shell.bootstrapError")}</p>
+          <p>{t(errorCopyKey(ApiError.from(bootstrap.error).code))}</p>
+        </ErrorAlert>
         <Button variant="outline" size="sm" className="mt-4" onClick={() => void bootstrap.refetch()}>
           {t("shell.retry")}
         </Button>
