@@ -48,6 +48,11 @@ export function createApi(invoke: Invoke) {
         invoke<AccountDto>("account_update", { id, input }),
       archive: (id: string) => invoke<AccountDto>("account_archive", { id }),
     },
+    category: {
+      // Declared by S4 acceptance-tests; built in tdd (DEC-13).
+      tree: (_query: { kind?: "expense" | "income" | null }): Promise<unknown[]> =>
+        Promise.reject(new Error("category.tree is not built yet")),
+    },
     tx: {
       create: (input: NewTxInput) => invoke<TxDetailDto>("tx_create", { input }),
       get: (id: string) => invoke<TxDetailDto>("tx_get", { id }),

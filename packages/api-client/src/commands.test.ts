@@ -69,6 +69,18 @@ describe("createApi exposes every M1 command", () => {
   });
 });
 
+describe("category_tree (S4, DEC-13)", () => {
+  it("createApi().category.tree sends category_tree with the query", async () => {
+    const { calls, api } = recorder();
+    await expect(api.category.tree({ kind: "expense" })).rejects.toMatchObject({ code: "NOT_IMPLEMENTED" });
+    await expect(api.category.tree({})).rejects.toMatchObject({ code: "NOT_IMPLEMENTED" });
+    expect(calls).toEqual([
+      ["category_tree", { query: { kind: "expense" } }],
+      ["category_tree", { query: {} }],
+    ]);
+  });
+});
+
 describe("ApiError fields", () => {
   it("keeps field errors for forms", () => {
     const e = ApiError.from({
