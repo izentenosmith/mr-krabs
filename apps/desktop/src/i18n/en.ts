@@ -108,6 +108,12 @@ export const en: Messages<typeof esCL> = {
       notAllowed: "This option isn't allowed here",
       fullNumber: "Enter only the last 4 digits",
       lockedByPostings: "Can't change: the account already has transactions",
+      sameAccount: "Choose a different account",
+      wrongKind: "Doesn't fit this kind of transaction",
+      archived: "It's archived; choose another option",
+      notFound: "It no longer exists; choose another option",
+      outOfRange: "It's outside the allowed range",
+      invalid: "Invalid value",
       unknown: "Check this field",
     },
     code: {

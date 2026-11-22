@@ -88,7 +88,7 @@ describe("fieldMessage", () => {
 });
 
 describe("errors.field copy (X-13)", () => {
-  // Every `errors.field.<reason>` the core sends (#29's table, plus `invalidDate` from mrk-domain).
+  // Every `errors.field.<reason>` the core sends: #29's table (with `invalidDate`) and S5's tx_* reasons.
   const reasons = [
     "required",
     "tooLong",
@@ -99,6 +99,13 @@ describe("errors.field copy (X-13)", () => {
     "notAllowed",
     "fullNumber",
     "lockedByPostings",
+    // The transactions commands (S5).
+    "sameAccount",
+    "wrongKind",
+    "archived",
+    "notFound",
+    "outOfRange",
+    "invalid",
   ];
 
   it.each(["es-CL", "en"])("has its own copy for every reason in %s", (lng) => {

@@ -104,6 +104,12 @@ export const esCL = {
       notAllowed: "Esta opción no está permitida aquí",
       fullNumber: "Ingresa solo los últimos 4 dígitos",
       lockedByPostings: "No se puede cambiar: la cuenta ya tiene movimientos",
+      sameAccount: "Elige una cuenta distinta",
+      wrongKind: "No corresponde a este tipo de movimiento",
+      archived: "Está archivada; elige otra opción",
+      notFound: "Ya no existe; elige otra opción",
+      outOfRange: "Está fuera del rango permitido",
+      invalid: "Valor no válido",
       unknown: "Revisa este campo",
     },
     code: {
