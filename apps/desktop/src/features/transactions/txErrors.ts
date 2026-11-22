@@ -31,8 +31,8 @@ export function serverFieldErrors(error: ApiError): Array<[TxField, string]> {
   });
 }
 
-type CopiedCode = "VALIDATION" | "NOT_FOUND" | "CURRENCY_MISMATCH" | "UNBALANCED_ENTRY" | "CONFLICT" | "INTERNAL" | "TRANSPORT";
-const COPIED = new Set<string>([
+// Codes with their own copy under `errors.code.*`; anything else reads as INTERNAL.
+const COPIED = [
   "VALIDATION",
   "NOT_FOUND",
   "CURRENCY_MISMATCH",
@@ -40,10 +40,12 @@ const COPIED = new Set<string>([
   "CONFLICT",
   "INTERNAL",
   "TRANSPORT",
-]);
+] as const;
+type CopiedCode = (typeof COPIED)[number];
+const isCopied = (code: string): code is CopiedCode => (COPIED as readonly string[]).includes(code);
 
 /** i18n key for what the user is told about an error code (MASTER §9: never the raw code). */
 export function errorCopyKey(code: ApiError["code"]) {
   if (code === "NOT_IMPLEMENTED") return "notAvailable.body" as const;
-  return `errors.code.${COPIED.has(code) ? (code as CopiedCode) : "INTERNAL"}` as const;
+  return `errors.code.${isCopied(code) ? code : "INTERNAL"}` as const;
 }
