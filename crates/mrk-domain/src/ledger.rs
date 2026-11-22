@@ -69,6 +69,8 @@ pub enum DomainError {
     UnknownAccount(String),
     #[error("account {0} is archived")]
     ArchivedAccount(String),
+    /// An account leg's currency differs from its account's. A transfer between accounts of
+    /// different currencies lands here in M1; FR-CU-04 (M4) extends it with FX legs.
     #[error("account {account} is in {expected}, the posting is in {found}")]
     CurrencyMismatch {
         account: String,

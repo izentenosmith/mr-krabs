@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use mrk_money::{CurrencyCode, Money};
 
-use crate::ledger::{DomainError, Posting};
+use crate::ledger::{DomainError, EntryKind, Leg, Posting, classify, validate_balanced};
 
 /// The type the user chose for a transaction. Expense, income and transfer are re-derived
 /// from the legs by `classify`; the declared type must agree with them.
@@ -114,7 +114,88 @@ pub struct UpdatePlan {
 impl NewTx {
     /// Expands the transaction into its two legs.
     pub fn expand(&self) -> Result<JournalEntry, DomainError> {
-        unimplemented!("S2: NewTx::expand")
+        let (tx_type, account_leg, counter_leg) = match self {
+            Self::Expense {
+                account,
+                category,
+                amount,
+            } => {
+                let amount = positive(*amount)?;
+                (
+                    TxType::Expense,
+                    Posting::account(account, amount.checked_neg()?),
+                    Posting::category(category, amount),
+                )
+            }
+            Self::Income {
+                account,
+                category,
+                amount,
+            } => {
+                let amount = positive(*amount)?;
+                (
+                    TxType::Income,
+                    Posting::account(account, amount),
+                    Posting::category(category, amount.checked_neg()?),
+                )
+            }
+            Self::Transfer { from, to, amount } => {
+                if from == to {
+                    return Err(DomainError::SameAccountTransfer);
+                }
+                let amount = positive(*amount)?;
+                (
+                    TxType::Transfer,
+                    Posting::account(from, amount.checked_neg()?),
+                    Posting::account(to, amount),
+                )
+            }
+            Self::OpeningBalance {
+                account, amount, ..
+            } => {
+                if amount.is_zero() {
+                    return Err(DomainError::ZeroAmount);
+                }
+                (
+                    TxType::OpeningBalance,
+                    Posting::account(account, *amount),
+                    opening_balance_counter_leg(*amount)?,
+                )
+            }
+        };
+        Ok(JournalEntry {
+            tx_type,
+            account_leg,
+            counter_leg,
+        })
+    }
+}
+
+fn positive(amount: Money) -> Result<Money, DomainError> {
+    if amount.minor > 0 {
+        Ok(amount)
+    } else {
+        Err(DomainError::NonPositiveAmount)
+    }
+}
+
+/// The counter leg of an opening balance: an FX-trading leg of the opposite amount in the
+/// account's currency (DEC-4, ADR-0011). It keeps the entry balanced and classified as a
+/// transfer, never income or expense. The FX position (M4) must therefore exclude
+/// `kind = opening_balance` entries, or every opening balance would look like an open
+/// currency position.
+fn opening_balance_counter_leg(amount: Money) -> Result<Posting, DomainError> {
+    Ok(Posting::fx(amount.checked_neg()?))
+}
+
+impl TxType {
+    /// The classification the legs of an entry of this type must have.
+    fn expected_kind(self) -> EntryKind {
+        match self {
+            Self::Expense => EntryKind::Expense,
+            Self::Income => EntryKind::Income,
+            Self::Transfer | Self::OpeningBalance => EntryKind::Transfer,
+        }
     }
 }
 
@@ -124,9 +205,39 @@ impl JournalEntry {
         [self.account_leg.clone(), self.counter_leg.clone()]
     }
 
-    /// Checks the entry against the accounts it posts to.
-    pub fn validate(&self, _ctx: &LedgerContext) -> Result<(), DomainError> {
-        unimplemented!("S2: JournalEntry::validate")
+    /// Checks the entry against the accounts it posts to: every account leg's account exists,
+    /// is not archived and has the leg's currency; the entry balances per currency; and the
+    /// legs classify as the declared type (a transfer carries no category leg, FR-TX-02).
+    pub fn validate(&self, ctx: &LedgerContext) -> Result<(), DomainError> {
+        let postings = self.postings();
+        for p in &postings {
+            if let Leg::Account(id) = &p.leg {
+                let info = ctx
+                    .accounts
+                    .get(id)
+                    .ok_or_else(|| DomainError::UnknownAccount(id.clone()))?;
+                if info.archived {
+                    return Err(DomainError::ArchivedAccount(id.clone()));
+                }
+                if info.currency != p.amount.currency {
+                    return Err(DomainError::CurrencyMismatch {
+                        account: id.clone(),
+                        expected: info.currency,
+                        found: p.amount.currency,
+                    });
+                }
+            }
+        }
+        validate_balanced(&postings)?;
+        let derived = classify(&postings);
+        let expected = self.tx_type.expected_kind();
+        if derived != expected {
+            return Err(DomainError::TypeMismatch {
+                declared: self.tx_type,
+                derived,
+            });
+        }
+        Ok(())
     }
 }
 
