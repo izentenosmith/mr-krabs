@@ -9,6 +9,7 @@ import {
   type NewTxInput,
   type TxDetailDto,
   type TxRowDto,
+  type View,
 } from "@mr-krabs/api-client";
 
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,8 @@ export interface TransactionsPageProps {
 }
 
 const PAGE_SIZE = 100; // design Q8
+// M1 has one member, so the combined view is everything (Q1); the lens switcher (M3) sets it.
+const VIEW: View = "combined";
 const UNDO_MS = 8000; // MASTER §7.2 undo toast
 
 type DialogState = { mode: "create" } | { mode: "edit"; detail: TxDetailDto } | null;
@@ -40,14 +43,14 @@ export function TransactionsPage({
   const queryClient = useQueryClient();
   const [dialog, setDialog] = useState<DialogState>(null);
   const accounts = useQuery({
-    queryKey: ["account", "list", "combined"],
-    queryFn: () => api.account.list({ view: "combined" }),
+    queryKey: ["account", "list", VIEW],
+    queryFn: () => api.account.list({ view: VIEW }),
   });
   const accountOptions = accounts.data?.map((s) => s.account) ?? [];
   const list = useInfiniteQuery({
     queryKey: ["tx", "list", { accountId }],
     queryFn: ({ pageParam }) =>
-      api.tx.list({ view: "combined", accountId, limit: PAGE_SIZE, cursor: pageParam }),
+      api.tx.list({ view: VIEW, accountId, limit: PAGE_SIZE, cursor: pageParam }),
     initialPageParam: null as string | null,
     getNextPageParam: (last) => last.nextCursor,
   });
