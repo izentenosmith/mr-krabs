@@ -42,3 +42,15 @@ it("↓ and ↑ move focus between rows (MASTER §5 keyboard, F9)", async () => 
   fireEvent.keyDown(second, { key: "ArrowUp" });
   await waitFor(() => expect(first).toHaveFocus());
 });
+
+it("a focused opening-balance row shows the focus ring and the header is a block sticky box (F40, F46)", () => {
+  const opening: TxRowDto = { ...row, id: "t0", kind: "opening_balance", description: "" };
+  render(
+    <TransactionsTable rows={[opening]} hasMore={false} loadingMore={false} onLoadMore={() => {}} onOpen={() => {}} />,
+  );
+  const r = screen.getByRole("row", { name: /Saldo inicial/ });
+  expect(r.className).toContain("focus-visible:ring-[3px]");
+  const header = screen.getAllByRole("rowgroup")[0];
+  expect(header?.className).toContain("block");
+  expect(header?.className).toContain("sticky");
+});

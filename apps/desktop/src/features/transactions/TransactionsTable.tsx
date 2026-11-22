@@ -128,6 +128,8 @@ export function TransactionsTable({
     estimateSize: () => ROW_HEIGHT,
     overscan: 10,
     scrollMargin,
+    // Keep a row scrolled to by ↑ / ↓ clear of the sticky header (F36).
+    scrollPaddingStart: ROW_HEIGHT,
   });
   const items = virtualizer.getVirtualItems();
 
@@ -149,7 +151,7 @@ export function TransactionsTable({
   return (
     <div className="bg-card rounded-lg border">
       <table role="table" className="w-full text-[13px]" aria-rowcount={modelRows.length + 1}>
-        <thead role="rowgroup" className="bg-card sticky top-0 z-10 border-b">
+        <thead role="rowgroup" className="bg-card sticky top-0 z-10 block border-b">
           {table.getHeaderGroups().map((group) => (
             <tr key={group.id} role="row" className={cn(GRID, "h-9 items-center px-3")}>
               {group.headers.map((header) => (
@@ -196,8 +198,9 @@ export function TransactionsTable({
                 className={cn(
                   GRID,
                   "absolute inset-x-0 h-9 items-center border-b px-3",
-                  editable &&
-                    "hover:bg-accent focus-visible:ring-ring/50 cursor-pointer outline-none focus-visible:ring-[3px]",
+                  // Every row can take focus (↑ ↓), so every row shows the ring (MASTER §5, F40).
+                  "focus-visible:ring-ring/50 outline-none focus-visible:ring-[3px]",
+                  editable && "hover:bg-accent cursor-pointer",
                 )}
                 style={{ transform: `translateY(${item.start - scrollMargin}px)` }}
               >
