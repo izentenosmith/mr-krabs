@@ -642,3 +642,24 @@ fn f3_unchanged_update_on_archived_account_succeeds_and_lock_comes_first() {
         })
     );
 }
+
+#[test]
+fn f7_balances_reject_an_as_of_that_is_not_a_civil_date() {
+    let rows = [row("checking", clp(7), "2026-11-10", true)];
+    for bad in [
+        "2026-11-5",
+        "",
+        "2026/11/15",
+        "26-11-15",
+        "2026-11-15x",
+        "2026-1a-15",
+    ] {
+        assert_eq!(
+            account_balances(&rows, bad),
+            Err(DomainError::InvalidDate(bad.into())),
+            "{bad:?}"
+        );
+    }
+    // Contrast: a well-formed date is accepted.
+    assert!(account_balances(&rows, "2026-11-15").is_ok());
+}

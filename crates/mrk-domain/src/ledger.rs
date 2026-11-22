@@ -88,6 +88,9 @@ pub enum DomainError {
     /// (opening balance, ADR-0011).
     #[error("a {declared:?} entry has a leg of the wrong kind")]
     LegKindMismatch { declared: TxType },
+    /// A date that is not a civil `YYYY-MM-DD` date.
+    #[error("invalid date {0:?}, expected YYYY-MM-DD")]
+    InvalidDate(String),
     #[error("the amount must be greater than zero")]
     NonPositiveAmount,
     #[error("a transfer needs two different accounts")]
