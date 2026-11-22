@@ -37,16 +37,28 @@ describe("applyServerErrors", () => {
 });
 
 describe("applyServerErrors for codes other than VALIDATION (X-13)", () => {
-  it("a code with every field mapped also sets its own form-level copy", () => {
+  it("a code whose field can't show its own copy also sets its form-level copy", () => {
     const setError = vi.fn();
     applyServerErrors(
-      new ApiError("CURRENCY_MISMATCH", "x", { "openingBalance.amount": "errors.field.currencyMismatch" }),
+      new ApiError("CURRENCY_MISMATCH", "x", { "openingBalance.amount": "errors.currencyMismatch" }),
       setError,
       { "openingBalance.amount": "openingAmount" },
     );
     expect(setError.mock.calls).toEqual([
-      ["openingAmount", { type: "server", message: "errors.field.currencyMismatch" }],
+      ["openingAmount", { type: "server", message: "errors.currencyMismatch" }],
       ["root.server", { type: "CURRENCY_MISMATCH" }],
+    ]);
+  });
+
+  it("a code whose fields all carry their own errors.field copy stays field-level (no false or doubled alert)", () => {
+    const setError = vi.fn();
+    applyServerErrors(
+      new ApiError("CURRENCY_MISMATCH", "x", { currency: "errors.field.lockedByPostings" }),
+      setError,
+      { currency: "currency" },
+    );
+    expect(setError.mock.calls).toEqual([
+      ["currency", { type: "server", message: "errors.field.lockedByPostings" }],
     ]);
   });
 

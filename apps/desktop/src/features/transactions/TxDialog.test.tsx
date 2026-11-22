@@ -124,10 +124,10 @@ describe("TxDialog", () => {
     expect(d.getByLabelText("Categoría")).toHaveValue("c2");
   });
 
-  it("CURRENCY_MISMATCH with a field error shows both the field copy and its own copy (X-13)", async () => {
+  it("CURRENCY_MISMATCH whose field key has no copy also shows the code's own copy (X-13)", async () => {
     const onSubmit = vi
       .fn()
-      .mockRejectedValue(new ApiError("CURRENCY_MISMATCH", "dev", { "amount.amount": "errors.field.currencyMismatch" }));
+      .mockRejectedValue(new ApiError("CURRENCY_MISMATCH", "dev", { "amount.amount": "errors.currencyMismatch" }));
     const { d } = renderDialog({ onSubmit });
     fireEvent.change(d.getByLabelText("Cuenta"), { target: { value: "a1" } });
     fireEvent.change(d.getByLabelText("Categoría"), { target: { value: "c1" } });
@@ -160,5 +160,18 @@ describe("TxDialog", () => {
     fireEvent.click(d.getByRole("button", { name: "Guardar" }));
     expect(await d.findByText("Este campo es obligatorio")).toBeInTheDocument();
     expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("CURRENCY_MISMATCH with its own errors.field copy shows it once, under the field (X-13 F4)", async () => {
+    const onSubmit = vi
+      .fn()
+      .mockRejectedValue(new ApiError("CURRENCY_MISMATCH", "dev", { "amount.amount": "errors.field.currencyMismatch" }));
+    const { d } = renderDialog({ onSubmit });
+    fireEvent.change(d.getByLabelText("Cuenta"), { target: { value: "a1" } });
+    fireEvent.change(d.getByLabelText("Categoría"), { target: { value: "c1" } });
+    fireEvent.change(d.getByLabelText("Monto"), { target: { value: "1" } });
+    fireEvent.click(d.getByRole("button", { name: "Guardar" }));
+    expect(await d.findByText("No coincide con la moneda de la cuenta")).toBeInTheDocument();
+    expect(d.queryByRole("alert")).not.toBeInTheDocument();
   });
 });

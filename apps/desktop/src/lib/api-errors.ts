@@ -24,16 +24,18 @@ export function errorCopyKey(code: ErrorCode | string) {
  */
 export function fieldMessage(t: TFunction, key: string | undefined) {
   if (!key) return undefined;
-  // Only `errors.field.*` keys: a server value naming any other key gets the generic copy.
-  return key.startsWith("errors.field.") && i18n.exists(key)
-    ? t(key as "errors.field.unknown")
-    : t("errors.field.unknown");
+  return hasFieldCopy(key) ? t(key as "errors.field.unknown") : t("errors.field.unknown");
+}
+
+/** Only `errors.field.*` keys with copy: a value naming any other key reads as generic. */
+function hasFieldCopy(key: string) {
+  return key.startsWith("errors.field.") && i18n.exists(key);
 }
 
 /**
  * Puts a rejected command's error on the form: `fields` (wire path → i18n key) under the
- * matching form fields; the form-level error (the code as its type) for any code other than
- * VALIDATION, and for VALIDATION when a field can't be shown or none was named.
+ * matching form fields; the form-level error (the code as its type) when a field can't be
+ * shown or none was named, and for a code other than VALIDATION whose field has no copy.
  * `fieldMap` maps wire paths (`openingBalance.amount`) to form field names.
  */
 export function applyServerErrors<T extends FieldValues>(
@@ -43,15 +45,20 @@ export function applyServerErrors<T extends FieldValues>(
 ) {
   const error = ApiError.from(raw);
   let unmapped = false;
+  let generic = false;
   for (const [path, key] of Object.entries(error.fields ?? {})) {
     const field = fieldMap[path];
-    if (field && key) setError(field, { type: "server", message: key });
-    else unmapped = true;
+    if (field && key) {
+      setError(field, { type: "server", message: key });
+      if (!hasFieldCopy(key)) generic = true;
+    } else unmapped = true;
   }
-  // A code other than VALIDATION always says what happened at form level, even when its
-  // fields are all shown (X-13); VALIDATION is form-level only when a field can't be shown.
+  // Form-level copy whenever a field can't say what happened itself: an unmapped path, no
+  // fields, or (for a code other than VALIDATION) a field whose key has no copy of its own.
+  // A field with its own `errors.field.*` copy is enough, so a locked currency is not also
+  // called a mismatch and a mismatch isn't said twice (X-13, Q-ui-transactions-5).
   const fieldless = !error.fields || Object.keys(error.fields).length === 0;
-  if (error.code !== "VALIDATION" || unmapped || fieldless) {
+  if (unmapped || fieldless || (error.code !== "VALIDATION" && generic)) {
     setError(SERVER_ERROR, { type: error.code });
   }
 }
