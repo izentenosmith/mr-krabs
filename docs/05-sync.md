@@ -85,6 +85,8 @@ and updates `field_clock(entity, entity_id, field) = (hlc, device)` for each cha
 ### Visibility filtering
 `visibility = "private"` is assigned by core for: entities of accounts with `visibility = private` (their entries, postings, reconciliations, import batches) and local-only tables. For `shared_summary` accounts, core emits **balance snapshots** (`account_balance_snapshot` change type) instead of the underlying postings. Private changes are **never sent**.
 
+**The stored label is a write-time hint, not the rule** ([ADR-0012](adr/0012-sync-visibility-decided-at-send-time.md)). An account's visibility can change after its rows were logged, so the sender re-derives every change's visibility when it sends, from the row's **current** account and scope: postings, entries and reconciliations of `private` and `shared_summary` accounts never leave the device (a `shared_summary` account sends only balance snapshots), and `scope = personal` budget lines follow their member's account visibility. From M1, the change-log writer labels rows of private accounts `private` and everything else `household`.
+
 ## Sync protocol
 
 ```mermaid
