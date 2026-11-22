@@ -10,8 +10,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 
 import { errorCopyKey, serverFieldErrors, type TxField } from "./txErrors";
 
-type TxType = NewTxInput["type"];
-const TYPES: TxType[] = ["expense", "income", "transfer"];
+const TYPES = ["expense", "income", "transfer"] as const satisfies readonly NewTxInput["type"][];
 
 const REQUIRED = "errors.field.required";
 const present = (s: string) => s.trim() !== "";
@@ -20,7 +19,7 @@ const present = (s: string) => s.trim() !== "";
 // of accounts is valid is Rust's call (CLAUDE.md rule 5).
 const schema = z
   .object({
-    type: z.enum(["expense", "income", "transfer"]),
+    type: z.enum(TYPES),
     accountId: z.string(),
     categoryId: z.string(),
     /** Transfer only; for a transfer `accountId` is the source account. */
