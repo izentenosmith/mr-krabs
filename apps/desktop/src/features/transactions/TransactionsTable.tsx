@@ -139,13 +139,14 @@ export function TransactionsTable({
 
   return (
     <div className="bg-card rounded-lg border">
-      <table className="w-full text-[13px]" aria-rowcount={modelRows.length + 1}>
-        <thead className="bg-card sticky top-0 z-10 border-b">
+      <table role="table" className="w-full text-[13px]" aria-rowcount={modelRows.length + 1}>
+        <thead role="rowgroup" className="bg-card sticky top-0 z-10 border-b">
           {table.getHeaderGroups().map((group) => (
-            <tr key={group.id} className={cn(GRID, "h-9 items-center px-3")}>
+            <tr key={group.id} role="row" className={cn(GRID, "h-9 items-center px-3")}>
               {group.headers.map((header) => (
                 <th
                   key={header.id}
+                  role="columnheader"
                   className={cn(
                     "text-muted-foreground truncate px-2 text-left text-xs font-medium",
                     header.column.id === "amount" && "text-right",
@@ -159,6 +160,7 @@ export function TransactionsTable({
         </thead>
         <tbody
           ref={bodyRef}
+          role="rowgroup"
           className="relative block"
           style={{ height: virtualizer.getTotalSize() }}
         >
@@ -169,6 +171,7 @@ export function TransactionsTable({
             return (
               <tr
                 key={row.id}
+                role="row"
                 aria-rowindex={item.index + 2}
                 tabIndex={editable ? 0 : undefined}
                 onClick={editable ? () => onOpen(row.original) : undefined}
@@ -190,6 +193,7 @@ export function TransactionsTable({
                 {row.getAllCells().map((cell) => (
                   <td
                     key={cell.id}
+                    role="cell"
                     className={cn("truncate px-2", cell.column.id === "amount" && "text-right")}
                   >
                     <table.FlexRender cell={cell} />
