@@ -1,6 +1,6 @@
 # 03 · Data Model
 
-The authoritative schema is [`crates/mrk-store/migrations/0001_init.sql`](../crates/mrk-store/migrations/0001_init.sql). This document explains it and the Rust domain types that sit on top.
+The authoritative schema is the migrations in [`crates/mrk-store/migrations/`](../crates/mrk-store/migrations/), applied in order: `0001_init.sql`, then `0002_ledger_legs_and_category_keys.sql`. 0002 implements the accepted schema review in [`db-review/proposal/proposal.md`](db-review/proposal/proposal.md). This document explains the schema and the Rust domain types that sit on top. Some sections below still describe 0001 and are updated with the proposal's docs step.
 
 ## Principles
 
@@ -58,7 +58,7 @@ All amounts below in CLP (0 decimals). Positive = debit (increase of assets/expe
 ## Categories are data
 
 - A category is a row in `category`, referenced everywhere by its ID; **no code path names a specific category**. The seed tree is inserted as ordinary rows on household creation and can be edited or deleted like anything else (FR-BU-01).
-- `parent_id` forms a tree of **any depth**. Rust rejects cycles and a child whose `kind` differs from its parent's; both checks run in `mrk-domain` before every write, not in SQL.
+- `parent_id` forms a tree of **any depth**. A child's `kind` must equal its parent's. Schema v2 declares this as a composite foreign key `(parent_id, kind) → category(id, kind)`, which is a plain constraint, not SQL logic. `mrk-domain` also checks it, and keeps `kind` immutable. Cycles are rejected by `mrk-domain` before every write.
 - Any node can be a posting leg or carry a budget line. Reports roll a node's amounts up through its descendants in Rust (FR-BU-08).
 - `kind` is only `income` or `expense`. Savings and investments are **accounts**, so money moved there is a transfer with no category leg (FR-TX-02).
 - Delete = merge: re-point the category's postings and budget lines to a chosen target, then soft-delete it, in one transaction (FR-BU-07). Archive sets `is_archived` and keeps history intact.

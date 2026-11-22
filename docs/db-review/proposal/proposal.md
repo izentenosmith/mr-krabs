@@ -1,6 +1,6 @@
 # Mr Krabs — Schema remediation proposal (before M1)
 
-> Status: **proposed, awaiting acceptance.** Nothing here has been applied.
+> Status: **accepted** by the owner on 2026-11-22, in the review session, together with these decisions: Q-02 tags and payees case-insensitive only; Q-05 kind rule declared as a composite FK; Q-06 installment-plan link 1:1. Migration 0002 is generated from this revision.
 > Revision 3: 2026-11-22. It is re-based on the requirements merged in PR 14 (rev. 2), and adds the score-raising changes D-22 to D-25 (rev. 3).
 
 ## Sources
@@ -122,6 +122,12 @@ With no deployed consumer, expand/contract isn't needed, and the contract happen
 | 9 | **M5** migration from schema-planned.sql: rules engine tables, with `payee_rule` rows copied (1 condition + 1–2 actions each), then `payee_rule` dropped; import staging tables and columns | T-29 | count `payee_rule` rows | copied rules = original count; every action FK valid; equivalence test | restore the backup | rules, import |
 | 10 | **Sync milestone:** merger rules D-05, D-16, D-17 and D-18, covered by the docs/05 convergence property test (concurrent same-name creates, concurrent moves forming a cycle, a posting into a category merged on the other device) | T-14, T-26, T-27 | Q-03, Q-11 answered | 2–3 simulated peers converge; no live reference to a merged category; no cycle | revert the merger change | sync only |
 | 11 | Re-run dbaudit on 0001+0002. After M1, run dbquery on the real queries (N-02, N-03). | — | steps 3–6 merged | gate re-evaluated | — | none |
+
+> **As built (dbbuild, 2026-11-22):** [`0002_ledger_legs_and_category_keys.sql`](../../../crates/mrk-store/migrations/0002_ledger_legs_and_category_keys.sql). The structure is unchanged from this revision. The mechanics are simpler than the plan below in two places:
+> 1. **No Rust step.** No code before M1 writes `category` or `recurring_rule`, so guards G1/G2 require both tables to be empty, and abort otherwise. This replaces the planned Rust hook for `name_key` and `template_json`.
+> 2. **Foreign keys.** `Store::migrate()` runs each migration with `foreign_keys` off and requires an empty `PRAGMA foreign_key_check` before commit. That is SQLite's documented rebuild procedure; `defer_foreign_keys` can't survive a `DROP TABLE` of a referenced parent.
+>
+> Guards G3/G4 implement pre-checks (d)/(e). Every other pre-check is enforced by the new tables' own constraints during the copy, which aborts the migration.
 
 **0002 data mapping** (a no-op on empty databases; correct on developer databases):
 
