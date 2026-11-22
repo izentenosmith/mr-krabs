@@ -754,13 +754,13 @@ mod tests {
     #[test]
     fn errors_carry_codes_and_fields() {
         let e = ApiError::new(ErrorCode::CurrencyMismatch, "USD amount on a CLP account")
-            .with_field("amount", "errors.currencyMismatch");
+            .with_field("amount", "errors.field.currencyMismatch");
         insta::assert_json_snapshot!(e, @r#"
         {
           "code": "CURRENCY_MISMATCH",
           "message": "USD amount on a CLP account",
           "fields": {
-            "amount": "errors.currencyMismatch"
+            "amount": "errors.field.currencyMismatch"
           }
         }
         "#);

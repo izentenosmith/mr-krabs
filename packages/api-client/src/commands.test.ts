@@ -86,10 +86,10 @@ describe("ApiError fields", () => {
     const e = ApiError.from({
       code: "CURRENCY_MISMATCH",
       message: "USD amount on a CLP account",
-      fields: { amount: "errors.currencyMismatch" },
+      fields: { amount: "errors.field.currencyMismatch" },
     });
     expect(e.code).toBe("CURRENCY_MISMATCH");
-    expect(e.fields).toEqual({ amount: "errors.currencyMismatch" });
+    expect(e.fields).toEqual({ amount: "errors.field.currencyMismatch" });
   });
 
   it("is null when the error has none", () => {
