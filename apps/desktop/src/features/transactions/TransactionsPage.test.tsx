@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { ApiError, type TxRowDto } from "@mr-krabs/api-client";
 
 import { Toaster } from "@/components/ui/sonner";
+import { shouldRetry } from "@/lib/api-errors";
 
 import { TransactionsPage } from "./TransactionsPage";
 
@@ -332,5 +333,21 @@ describe("TransactionsPage follow-ups", () => {
     fireEvent.click(screen.getByRole("button", { name: "Reintentar" }));
     expect(await screen.findByRole("row", { name: /Feria Prueba/ })).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+  });
+});
+
+describe("TransactionsPage with the app's retry policy", () => {
+  it("NOT_IMPLEMENTED shows the not-yet-available state at once, without retries (F2)", async () => {
+    api.account.list.mockResolvedValue([]);
+    api.tx.list.mockRejectedValue(new ApiError("NOT_IMPLEMENTED", "tx_list"));
+    // The same QueryClient options as main.tsx.
+    const client = new QueryClient({ defaultOptions: { queries: { retry: shouldRetry } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TransactionsPage onAccountIdChange={vi.fn()} categories={{ expense: [], income: [] }} />
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByText("Aún no disponible", {}, { timeout: 500 })).toBeInTheDocument();
+    expect(api.tx.list).toHaveBeenCalledTimes(1);
   });
 });
