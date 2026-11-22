@@ -64,5 +64,6 @@ Later milestones — parallel tracks once M1 is done (owner decides when; CLAUDE
 
 ## Records
 - docs/adr/0010-change-log-from-m1.md — change log + field clock written from M1; device key nullable until pairing (Q2)
+- docs/adr/0011-opening-balance-fx-leg.md — opening balance counter is an FX-trading leg (DEC-4, from Q-ledger-domain-1)
 - docs/02-architecture.md — amended: synchronous core until M7 (Q3)
 - docs/07-roadmap.md — amended: M1 slices and later parallel tracks (Q13)

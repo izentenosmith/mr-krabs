@@ -12,5 +12,6 @@
 | [0008](0008-deterministic-ids-for-seeded-rows.md) | Deterministic ids for seeded rows | Accepted |
 | [0009](0009-posting-legs-and-per-leg-status.md) | Posting legs and per-leg status | Accepted |
 | [0010](0010-change-log-from-m1.md) | Change log written from M1 | Accepted |
+| [0011](0011-opening-balance-fx-leg.md) | Opening balances balance against an FX-trading leg | Accepted |
 
 Template: Context → Decision → Consequences.
