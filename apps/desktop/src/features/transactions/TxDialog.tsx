@@ -1,4 +1,6 @@
 import { useForm, type FieldErrors } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { useTranslation } from "react-i18next";
 import { CircleAlert, Hourglass } from "lucide-react";
 import { ApiError, type AccountDto, type NewTxInput, type TxDetailDto } from "@mr-krabs/api-client";
@@ -12,17 +14,31 @@ import { errorCopyKey, serverFieldErrors, type TxField } from "./txErrors";
 type TxType = NewTxInput["type"];
 const TYPES: TxType[] = ["expense", "income", "transfer"];
 
-interface FormValues {
-  type: TxType;
-  accountId: string;
-  categoryId: string;
-  /** Transfer only; for a transfer `accountId` is the source account. */
-  toAccountId: string;
-  amount: string;
-  date: string;
-  description: string;
-  memo: string;
-}
+const REQUIRED = "errors.field.required";
+const present = (s: string) => s.trim() !== "";
+
+// Shape only: which fields must be filled for each type. Whether an amount, date or pair
+// of accounts is valid is Rust's call (CLAUDE.md rule 5).
+const schema = z
+  .object({
+    type: z.enum(["expense", "income", "transfer"]),
+    accountId: z.string(),
+    categoryId: z.string(),
+    /** Transfer only; for a transfer `accountId` is the source account. */
+    toAccountId: z.string(),
+    amount: z.string(),
+    date: z.string(),
+    description: z.string(),
+    memo: z.string(),
+  })
+  .superRefine((v, ctx) => {
+    const required: TxField[] = ["accountId", "amount", "date"];
+    required.push(v.type === "transfer" ? "toAccountId" : "categoryId");
+    for (const field of required) {
+      if (!present(v[field])) ctx.addIssue({ code: "custom", path: [field], message: REQUIRED });
+    }
+  });
+type FormValues = z.infer<typeof schema>;
 
 export interface TxDialogProps {
   open: boolean;
@@ -70,7 +86,7 @@ function defaults(initial?: TxDetailDto): FormValues {
   };
 }
 
-const optional = (s: string) => (s.trim() === "" ? null : s);
+const optional = (s: string) => (present(s) ? s : null);
 
 /**
  * Builds `NewTxInput` from what was typed. The amount stays text; its currency is the
@@ -153,6 +169,7 @@ export function TxDialog({
 }: TxDialogProps) {
   const { t, i18n } = useTranslation();
   const { register, handleSubmit, watch, setError, formState } = useForm<FormValues>({
+    resolver: zodResolver(schema),
     defaultValues: defaults(initial),
   });
   // Messages are i18n keys (ours or the server's); an unknown key gets the generic text.
