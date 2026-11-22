@@ -8,7 +8,7 @@ docs/05 needs every replicated change in `change_log` and `field_clock`, written
 ## Decision
 - From M1, every mutation of a replicated table appends `change_log` rows and updates `field_clock`, in the same transaction. One store-level writer, `Store::record_change`, is the only code that writes them.
 - The local device gets a UUIDv7 id at first launch, and an HLC (`mrk-sync`) issues every stamp. Callers no longer supply stamps.
-- Migration `0003` makes `device.public_key` nullable until pairing sets it. No placeholder key is ever written.
+- Migration `0003` makes `device.public_key` nullable until pairing sets it, and `device.member_id` nullable until `household_create` links the local device to its member. The device row exists from the first open, before any household. No placeholder key or member is ever written.
 - Seeded rows keep ADR-0008's exception: `hlc = 0`, no change-log entry.
 
 ## Alternatives
