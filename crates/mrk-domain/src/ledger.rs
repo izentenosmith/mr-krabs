@@ -1,9 +1,10 @@
 //! Double-entry ledger invariants (ADR-0003).
 
 use std::collections::BTreeMap;
-use std::fmt;
 
 use mrk_money::{CurrencyCode, Money, MoneyError};
+
+use crate::entry::TxType;
 
 /// What a posting points at: a real account (asset/liability), a category (nominal
 /// income/expense account), or the FX-trading position of the posting's own currency.
@@ -47,37 +48,59 @@ impl Posting {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Why a ledger entry, an update or a balance was refused. Core maps each variant to an
+/// `ApiError` code (design Q6): `UnknownAccount` → NOT_FOUND, `CurrencyMismatch` →
+/// CURRENCY_MISMATCH, `Unbalanced` → UNBALANCED_ENTRY, `ReconciledEntryLocked` → CONFLICT,
+/// the rest → VALIDATION.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum DomainError {
+    #[error("an entry needs at least two postings")]
     TooFewPostings,
+    #[error("postings cannot be zero")]
     ZeroAmount,
+    #[error("entry is unbalanced in {currency} by {difference}")]
     Unbalanced {
         currency: CurrencyCode,
         difference: i64,
     },
-    Money(MoneyError),
-}
-
-impl fmt::Display for DomainError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::TooFewPostings => write!(f, "an entry needs at least two postings"),
-            Self::ZeroAmount => write!(f, "postings cannot be zero"),
-            Self::Unbalanced {
-                currency,
-                difference,
-            } => write!(f, "entry is unbalanced in {currency} by {difference}"),
-            Self::Money(e) => write!(f, "{e}"),
-        }
-    }
-}
-
-impl std::error::Error for DomainError {}
-
-impl From<MoneyError> for DomainError {
-    fn from(e: MoneyError) -> Self {
-        Self::Money(e)
-    }
+    #[error(transparent)]
+    Money(#[from] MoneyError),
+    #[error("unknown account {0}")]
+    UnknownAccount(String),
+    #[error("account {0} is archived")]
+    ArchivedAccount(String),
+    /// An account leg's currency differs from its account's. A transfer between accounts of
+    /// different currencies lands here in M1; FR-CU-04 (M4) extends it with FX legs.
+    #[error("account {account} is in {expected}, the posting is in {found}")]
+    CurrencyMismatch {
+        account: String,
+        expected: CurrencyCode,
+        found: CurrencyCode,
+    },
+    /// The legs contradict the declared type, e.g. a transfer carrying a category leg.
+    #[error("a {declared:?} entry cannot have legs that classify as {derived:?}")]
+    TypeMismatch {
+        declared: TxType,
+        derived: EntryKind,
+    },
+    /// A leg is not the kind its role needs for the declared type: the account leg is always an
+    /// account (for a transfer, the negative `from` leg); the counter leg is a category (expense, income), an account (transfer) or FX
+    /// (opening balance, ADR-0011).
+    #[error("a {declared:?} entry has a leg of the wrong kind")]
+    LegKindMismatch { declared: TxType },
+    /// A date that is not a civil `YYYY-MM-DD` date.
+    #[error("invalid date {0:?}, expected YYYY-MM-DD")]
+    InvalidDate(String),
+    #[error("the amount must be greater than zero")]
+    NonPositiveAmount,
+    #[error("a transfer needs two different accounts")]
+    SameAccountTransfer,
+    /// FR-AC-06: an entry with a reconciled leg is locked against edits.
+    #[error("the entry is reconciled (posting {posting_id}) and cannot be edited")]
+    ReconciledEntryLocked { posting_id: String },
+    /// The stored legs are not a 2-leg entry with an identifiable account leg.
+    #[error("the stored entry is not a two-leg entry this version can edit")]
+    UnsupportedEntryShape,
 }
 
 /// Checks the fundamental invariant: ≥ 2 non-zero postings that sum to zero **per currency**.
