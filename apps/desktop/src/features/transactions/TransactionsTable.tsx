@@ -130,6 +130,15 @@ export function TransactionsTable({
     scrollMargin,
   });
   const items = virtualizer.getVirtualItems();
+
+  // ↑ / ↓ (MASTER §5): scroll the target row into the window, then focus it once rendered.
+  const focusRow = (index: number) => {
+    if (index < 0 || index >= modelRows.length) return;
+    virtualizer.scrollToIndex(index);
+    requestAnimationFrame(() =>
+      bodyRef.current?.querySelector<HTMLElement>(`[data-index="${index}"]`)?.focus(),
+    );
+  };
   const lastIndex = items.at(-1)?.index ?? -1;
 
   // Keyset paging: ask for the next page once the last loaded row is in view.
@@ -173,15 +182,17 @@ export function TransactionsTable({
                 key={row.id}
                 role="row"
                 aria-rowindex={item.index + 2}
-                tabIndex={editable ? 0 : undefined}
+                data-index={item.index}
+                // Every row takes arrow-key focus; only editable ones are Tab stops.
+                tabIndex={editable ? 0 : -1}
                 onClick={editable ? () => onOpen(row.original) : undefined}
-                onKeyDown={
-                  editable
-                    ? (e) => {
-                        if (e.key === "Enter") onOpen(row.original);
-                      }
-                    : undefined
-                }
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && editable) onOpen(row.original);
+                  else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                    e.preventDefault();
+                    focusRow(item.index + (e.key === "ArrowDown" ? 1 : -1));
+                  }
+                }}
                 className={cn(
                   GRID,
                   "absolute inset-x-0 h-9 items-center border-b px-3",

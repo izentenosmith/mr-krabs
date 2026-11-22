@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { TxRowDto } from "@mr-krabs/api-client";
 
 import { TransactionsTable } from "./TransactionsTable";
@@ -27,4 +27,18 @@ it("declares table roles explicitly, since grid/block display can drop them in W
   for (const r of screen.getAllByRole("row")) expect(r).toHaveAttribute("role", "row");
   for (const h of screen.getAllByRole("columnheader")) expect(h).toHaveAttribute("role", "columnheader");
   for (const c of screen.getAllByRole("cell")) expect(c).toHaveAttribute("role", "cell");
+});
+
+it("↓ and ↑ move focus between rows (MASTER §5 keyboard, F9)", async () => {
+  const rows = [row, { ...row, id: "t2", description: "Segunda Prueba" }];
+  render(
+    <TransactionsTable rows={rows} hasMore={false} loadingMore={false} onLoadMore={() => {}} onOpen={() => {}} />,
+  );
+  const first = screen.getByRole("row", { name: /Feria Prueba/ });
+  const second = screen.getByRole("row", { name: /Segunda Prueba/ });
+  first.focus();
+  fireEvent.keyDown(first, { key: "ArrowDown" });
+  await waitFor(() => expect(second).toHaveFocus());
+  fireEvent.keyDown(second, { key: "ArrowUp" });
+  await waitFor(() => expect(first).toHaveFocus());
 });
