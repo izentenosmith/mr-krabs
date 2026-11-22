@@ -32,7 +32,11 @@ const UNDO_MS = 8000; // MASTER §7.2 undo toast
 
 type DialogState = { mode: "create" } | { mode: "edit"; detail: TxDetailDto } | null;
 
-export function TransactionsPage({ accountId, categories }: TransactionsPageProps) {
+export function TransactionsPage({
+  accountId,
+  onAccountIdChange,
+  categories,
+}: TransactionsPageProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [dialog, setDialog] = useState<DialogState>(null);
@@ -89,8 +93,24 @@ export function TransactionsPage({ accountId, categories }: TransactionsPageProp
 
   return (
     <section className="flex min-h-0 flex-1 flex-col gap-4">
-      <header className="flex h-11 items-center justify-between gap-3">
+      <header className="flex h-11 items-center gap-3">
         <h2 className="text-xl font-semibold">{t("tx.title")}</h2>
+        <label htmlFor="tx-filter" className="sr-only">
+          {t("tx.filterLabel")}
+        </label>
+        <select
+          id="tx-filter"
+          value={accountId ?? ""}
+          onChange={(e) => onAccountIdChange(e.target.value || undefined)}
+          className="border-input focus-visible:ring-ring/50 ml-auto h-9 rounded-md border bg-transparent px-3 text-sm outline-none focus-visible:ring-[3px]"
+        >
+          <option value="">{t("tx.allAccounts")}</option>
+          {accountOptions.map((a) => (
+            <option key={a.id} value={a.id}>
+              {a.name}
+            </option>
+          ))}
+        </select>
         <Button onClick={() => setDialog({ mode: "create" })}>
           <Plus aria-hidden />
           {t("tx.new")}
