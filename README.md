@@ -57,8 +57,8 @@ docker compose up --build        # first run compiles Rust: a few minutes
 # UI           → http://localhost:5173
 # Core API     → http://localhost:7878/api/health
 # DB browser   → http://localhost:8081 (read-only)
-docker compose --profile test run --rm test-back    # Rust unit tests
-docker compose --profile test run --rm test-front   # frontend unit tests
+docker compose --profile test run --rm test-back    # Rust checks, as in CI
+docker compose --profile test run --rm test-front   # frontend checks, as in CI
 ```
 
 Desktop app (macOS, native): `pnpm install && pnpm tauri dev`. Details in [docs/08-development.md](docs/08-development.md).
