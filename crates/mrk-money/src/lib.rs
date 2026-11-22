@@ -482,6 +482,21 @@ mod tests {
     }
 
     #[test]
+    fn parse_rejects_another_currencys_iso_code() {
+        for shown in Currency::BUILT_IN {
+            for target in Currency::BUILT_IN.into_iter().filter(|t| *t != shown) {
+                for s in [format!("{} 10", shown.code), format!("10 {}", shown.code)] {
+                    assert!(
+                        parse_es_cl(&s, target).is_err(),
+                        "{s:?} parsed as {}",
+                        target.code
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
     fn parse_reads_the_i64_edges() {
         assert_eq!(
             parse_es_cl(&format_es_cl(i64::MIN, 0, "$"), Currency::CLP),
