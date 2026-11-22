@@ -1,7 +1,7 @@
 // Failure paths of the page that the acceptance suite doesn't name one by one:
 // opening a row, loading more rows, and a first page that fails for another reason.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { toast } from "sonner";
 import { ApiError, type TxRowDto } from "@mr-krabs/api-client";
 
@@ -11,13 +11,52 @@ import { TransactionsPage } from "./TransactionsPage";
 
 const api = vi.hoisted(() => ({
   account: { list: vi.fn() },
-  tx: { list: vi.fn(), get: vi.fn() },
+  tx: { list: vi.fn(), get: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
 }));
 
 vi.mock("@mr-krabs/api-client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@mr-krabs/api-client")>()),
   api,
 }));
+
+function deferred<T>() {
+  let resolve!: (v: T) => void;
+  const promise = new Promise<T>((r) => (resolve = r));
+  return { promise, resolve };
+}
+
+const accounts = [
+  {
+    account: {
+      id: "a1",
+      name: "Corriente Prueba",
+      kind: "checking",
+      currency: "CLP",
+      scope: "household",
+      ownerMemberId: null,
+      visibility: "shared_full",
+      institution: null,
+      numberMask: null,
+      isArchived: false,
+      sortOrder: 0,
+    },
+    balance: { minor: "1", currency: "CLP", display: "$1" },
+  },
+];
+
+const detail = (id: string, description: string) => ({
+  id,
+  kind: "transfer" as const,
+  date: "2026-11-20",
+  description,
+  memo: "",
+  accountId: "a1",
+  categoryId: null,
+  toAccountId: "a1",
+  amount: { minor: "1", currency: "CLP", display: "$1" },
+  status: "pending" as const,
+  deleted: false,
+});
 
 const row: TxRowDto = {
   id: "t1",
@@ -82,5 +121,73 @@ describe("TransactionsPage failures", () => {
     expect(screen.queryByText("Aún no hay transacciones")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Reintentar" }));
     await waitFor(() => expect(screen.getByRole("row", { name: /Feria Prueba/ })).toBeInTheDocument());
+  });
+});
+
+describe("TransactionsPage dialog identity", () => {
+  beforeEach(() => {
+    api.account.list.mockResolvedValue(accounts);
+    api.tx.update.mockResolvedValue(detail("t2", "Otra Prueba"));
+    api.tx.list.mockResolvedValue({
+      items: [row, { ...row, id: "t2", description: "Otra Prueba" }],
+      nextCursor: null,
+    });
+  });
+
+  it("a late tx_get never turns an open create form into an edit (F1)", async () => {
+    const slow = deferred<ReturnType<typeof detail>>();
+    api.tx.get.mockReturnValue(slow.promise);
+    api.tx.create.mockResolvedValue(detail("t9", "x"));
+    renderPage();
+    fireEvent.click(await screen.findByRole("row", { name: /Feria Prueba/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Nuevo" }));
+    const d = within(await screen.findByRole("dialog", { name: "Nueva transacción" }));
+    fireEvent.change(d.getByLabelText("Monto"), { target: { value: "777" } });
+    slow.resolve(detail("t1", "Feria Prueba"));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(screen.getByRole("dialog", { name: "Nueva transacción" })).toBeInTheDocument();
+    expect(d.getByLabelText("Monto")).toHaveValue("777");
+    expect(api.tx.update).not.toHaveBeenCalled();
+  });
+
+  it("the most recently clicked row wins when tx_get answers out of order (F1)", async () => {
+    const slowA = deferred<ReturnType<typeof detail>>();
+    api.tx.get.mockImplementation((id: string) =>
+      id === "t1" ? slowA.promise : Promise.resolve(detail("t2", "Otra Prueba")),
+    );
+    renderPage();
+    fireEvent.click(await screen.findByRole("row", { name: /Feria Prueba/ }));
+    fireEvent.click(screen.getByRole("row", { name: /Otra Prueba/ }));
+    const d = within(await screen.findByRole("dialog", { name: "Editar transacción" }));
+    expect(d.getByLabelText("Descripción")).toHaveValue("Otra Prueba");
+    slowA.resolve(detail("t1", "Feria Prueba"));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(d.getByLabelText("Descripción")).toHaveValue("Otra Prueba");
+    fireEvent.click(d.getByRole("button", { name: "Guardar" }));
+    await waitFor(() => expect(api.tx.update).toHaveBeenCalled());
+    expect(api.tx.update).toHaveBeenCalledWith("t2", expect.objectContaining({ description: "Otra Prueba" }));
+  });
+
+  it("a save that finishes after its dialog closed leaves a newer dialog open (F12)", async () => {
+    const slow = deferred<ReturnType<typeof detail>>();
+    api.tx.create.mockReturnValue(slow.promise);
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Nuevo" }));
+    let d = within(await screen.findByRole("dialog", { name: "Nueva transacción" }));
+    fireEvent.click(d.getByRole("radio", { name: "Transferencia" }));
+    fireEvent.change(d.getByLabelText("Desde"), { target: { value: "a1" } });
+    fireEvent.change(d.getByLabelText("Hacia"), { target: { value: "a1" } });
+    fireEvent.change(d.getByLabelText("Monto"), { target: { value: "5" } });
+    fireEvent.click(d.getByRole("button", { name: "Guardar" }));
+    await waitFor(() => expect(api.tx.create).toHaveBeenCalled());
+    fireEvent.click(d.getByRole("button", { name: "Cancelar" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Nuevo" }));
+    d = within(await screen.findByRole("dialog", { name: "Nueva transacción" }));
+    fireEvent.change(d.getByLabelText("Monto"), { target: { value: "8" } });
+    slow.resolve(detail("t9", "x"));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(screen.getByRole("dialog", { name: "Nueva transacción" })).toBeInTheDocument();
+    expect(d.getByLabelText("Monto")).toHaveValue("8");
   });
 });

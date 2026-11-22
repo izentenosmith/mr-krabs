@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { CircleAlert, Hourglass, Inbox, Plus } from "lucide-react";
@@ -32,7 +32,8 @@ const PAGE_SIZE = 100; // design Q8
 const VIEW: View = "combined";
 const UNDO_MS = 8000; // MASTER §7.2 undo toast
 
-type DialogState = { mode: "create" } | { mode: "edit"; detail: TxDetailDto } | null;
+/** The open dialog; `key` identifies one opening so late answers can't touch a newer one. */
+type OpenDialog = ({ mode: "create" } | { mode: "edit"; detail: TxDetailDto }) & { key: number };
 
 export function TransactionsPage({
   accountId,
@@ -41,7 +42,10 @@ export function TransactionsPage({
 }: TransactionsPageProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const [dialog, setDialog] = useState<DialogState>(null);
+  const [dialog, setDialog] = useState<OpenDialog | null>(null);
+  // Bumped by every request to open a dialog; an answer for an older request is dropped (F1).
+  const lastOpen = useRef(0);
+  const close = (key: number) => setDialog((d) => (d?.key === key ? null : d));
   const accounts = useQuery({
     queryKey: ["account", "list", VIEW],
     queryFn: () => api.account.list({ view: VIEW }),
@@ -68,13 +72,16 @@ export function TransactionsPage({
   // Failures of actions outside a form (MASTER §7.2): an error toast with the code's copy.
   const toastError = (raw: unknown) => toast.error(t(errorCopyKey(ApiError.from(raw).code)));
 
+  const openCreate = () => setDialog({ mode: "create", key: ++lastOpen.current });
+
   const open = async (row: TxRowDto) => {
+    const key = ++lastOpen.current;
     try {
       const detail = await queryClient.fetchQuery({
         queryKey: ["tx", "detail", row.id],
         queryFn: () => api.tx.get(row.id),
       });
-      setDialog({ mode: "edit", detail });
+      if (key === lastOpen.current) setDialog({ mode: "edit", detail, key });
     } catch (raw) {
       toastError(raw);
     }
@@ -86,10 +93,10 @@ export function TransactionsPage({
     if (result.isError) toastError(result.error);
   };
 
-  const save = async (input: NewTxInput) => {
-    if (dialog?.mode === "edit") await api.tx.update(dialog.detail.id, input);
+  const save = async (target: OpenDialog, input: NewTxInput) => {
+    if (target.mode === "edit") await api.tx.update(target.detail.id, input);
     else await api.tx.create(input);
-    setDialog(null);
+    close(target.key);
     void refresh();
   };
 
@@ -103,14 +110,14 @@ export function TransactionsPage({
     void refresh();
   };
 
-  const remove = async (id: string) => {
+  const remove = async (key: number, id: string) => {
     try {
       await api.tx.delete(id);
     } catch (raw) {
       toastError(raw); // the dialog stays open, nothing changed
       return;
     }
-    setDialog(null);
+    close(key);
     void refresh();
     toast(t("tx.deleted"), {
       duration: UNDO_MS,
@@ -134,7 +141,7 @@ export function TransactionsPage({
           <option value="">{t("tx.allAccounts")}</option>
           <AccountOptions accounts={accountOptions} />
         </select>
-        <Button onClick={() => setDialog({ mode: "create" })} disabled={!!notAvailable}>
+        <Button onClick={openCreate} disabled={!!notAvailable}>
           <Plus aria-hidden />
           {t("tx.new")}
         </Button>
@@ -169,13 +176,14 @@ export function TransactionsPage({
       {dialog && (
         <TxDialog
           open
-          onOpenChange={(open) => !open && setDialog(null)}
+          key={dialog.key}
+          onOpenChange={(isOpen) => !isOpen && close(dialog.key)}
           mode={dialog.mode}
           initial={dialog.mode === "edit" ? dialog.detail : undefined}
           accounts={accountOptions}
           categories={categories}
-          onSubmit={save}
-          onDelete={dialog.mode === "edit" ? () => remove(dialog.detail.id) : undefined}
+          onSubmit={(input) => save(dialog, input)}
+          onDelete={dialog.mode === "edit" ? () => remove(dialog.key, dialog.detail.id) : undefined}
         />
       )}
     </section>
