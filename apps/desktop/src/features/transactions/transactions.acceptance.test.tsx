@@ -476,7 +476,8 @@ describe("S7 transactions — acceptance", () => {
     api.tx.list.mockResolvedValue(page([]));
     renderPage();
     expect(await screen.findByText("Aún no hay transacciones")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Nuevo" })).toBeEnabled();
+    // Nuevo also waits for the category trees (X-13 F2).
+    await waitFor(() => expect(screen.getByRole("button", { name: "Nuevo" })).toBeEnabled());
   });
 
   it("edge: missing required fields block tx_create with a message per field", async () => {
