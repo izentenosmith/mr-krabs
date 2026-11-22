@@ -187,10 +187,10 @@ fn positive(amount: Money) -> Result<Money, DomainError> {
 }
 
 /// The counter leg of an opening balance: an FX-trading leg of the opposite amount in the
-/// account's currency (DEC-4, ADR-0011). It keeps the entry balanced and classified as a
-/// transfer, never income or expense. The FX position (M4) must therefore exclude
-/// `kind = opening_balance` entries, or every opening balance would look like an open
-/// currency position.
+/// account's currency (DEC-4, `docs/adr/0011-opening-balance-fx-leg.md`). It keeps the
+/// entry balanced and classified as a transfer, never income or expense. The FX position
+/// (M4) must therefore exclude `kind = opening_balance` entries, or every opening balance
+/// would look like an open currency position.
 fn opening_balance_counter_leg(amount: Money) -> Result<Posting, DomainError> {
     Ok(Posting::fx(amount.checked_neg()?))
 }
