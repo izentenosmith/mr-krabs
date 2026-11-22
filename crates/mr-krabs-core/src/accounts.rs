@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 
 use mrk_domain::{
     AccountInfo, BalanceRow, DomainError, LedgerContext, LegStatus, NewTx, Posting, StoredLeg,
-    account_balances, ensure_unlocked, plan_update,
+    account_balances, ensure_unlocked, plan_update, validate_civil_date,
 };
 use mrk_money::Money;
 use mrk_store::{AccountRow, EntryRow, PostingRow, Write};
@@ -285,6 +285,10 @@ fn account_from_input(
                 ));
             }
             let amount = parse_amount("openingBalance.amount", &o.amount.amount, currency)?;
+            if !amount.is_zero() {
+                // The ledger's one date rule for every entry_date written (X-6).
+                validate_civil_date(&o.date).map_err(opening_error)?;
+            }
             (!amount.is_zero()).then(|| Opening {
                 amount,
                 date: opening_date.unwrap_or_default(),

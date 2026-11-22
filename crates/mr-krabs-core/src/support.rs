@@ -108,7 +108,7 @@ impl Fields {
 /// Parses user-typed money in `currency`; any failure (text, decimals, overflow) is
 /// `errors.field.invalidAmount` on `field`.
 pub(crate) fn parse_amount(field: &str, text: &str, currency: Currency) -> Result<Money, ApiError> {
-    parse_es_cl(text, currency.minor_units)
+    parse_es_cl(text, currency)
         .map(|minor| Money::new(minor, currency.code))
         .map_err(|e| field_error(ErrorCode::Validation, field, "invalidAmount", e))
 }
