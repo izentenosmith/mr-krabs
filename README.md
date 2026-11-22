@@ -2,7 +2,7 @@
 
 [![ci](https://github.com/izentenosmith/mr-krabs/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/izentenosmith/mr-krabs/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-> *"I like money."* — a local-first personal & household finance app for macOS.
+> *"Time is money & the money is always right"* — a local-first personal & household finance app for macOS.
 
 Mr Krabs tracks **personal** and **household** finances for a two-person household (you and your partner), runs **100% on your own devices**, syncs **peer-to-peer over your home LAN**, and costs **$0 in infrastructure** — no cloud, no SaaS, no accounts.
 
