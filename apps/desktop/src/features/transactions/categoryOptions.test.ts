@@ -17,9 +17,9 @@ describe("categoryOptions", () => {
       n("z", "Archivada raíz", [], { isArchived: true }),
     ];
     expect(categoryOptions(tree)).toEqual([
-      { id: "h1", name: "Arriendo", group: "Hogar" },
-      { id: "h2", name: "Servicios", group: "Hogar" },
-      { id: "h21", name: "Servicios › Luz", group: "Hogar" },
+      { id: "h1", name: "Arriendo", group: "Hogar", groupId: "h" },
+      { id: "h2", name: "Servicios", group: "Hogar", groupId: "h" },
+      { id: "h21", name: "Servicios › Luz", group: "Hogar", groupId: "h" },
       { id: "t", name: "Transporte" },
     ]);
   });
@@ -28,5 +28,15 @@ describe("categoryOptions", () => {
     expect(categoryOptions([n("r", "Ocio", [n("a", "X", [], { isArchived: true })])])).toEqual([
       { id: "r", name: "Ocio" },
     ]);
+  });
+});
+
+describe("categoryOptions groups", () => {
+  it("keys each group by its root's id, so two roots with the same name stay apart (X-13 F6)", () => {
+    const opts = categoryOptions([
+      n("r1", "Hogar", [n("a", "Arriendo")]),
+      n("r2", "Hogar", [n("b", "Luz")]),
+    ]);
+    expect(opts.map((o) => o.groupId)).toEqual(["r1", "r2"]);
   });
 });

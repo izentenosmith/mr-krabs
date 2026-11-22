@@ -21,7 +21,7 @@ export function categoryOptions(tree: CategoryNodeDto[]): CategoryOption[] {
     const walk = (nodes: CategoryNodeDto[], prefix: string) => {
       for (const n of live(nodes)) {
         const name = prefix ? `${prefix} › ${n.name}` : n.name;
-        out.push({ id: n.id, name, group: root.name });
+        out.push({ id: n.id, name, group: root.name, groupId: root.id });
         walk(n.children, name);
       }
     };

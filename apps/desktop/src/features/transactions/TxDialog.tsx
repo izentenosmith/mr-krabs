@@ -66,6 +66,8 @@ export interface CategoryOption {
   name: string;
   /** The root it belongs to, shown as an `<optgroup>`; none for a childless root. */
   group?: string;
+  /** That root's id: options group by it, so two roots with one name stay apart. */
+  groupId?: string;
 }
 
 /** Category choices per transaction type, from `category_tree` (REQ-13). */
@@ -144,11 +146,12 @@ function toInput(v: FormValues, accounts: AccountDto[]): NewTxInput {
 
 /** Options in order, consecutive ones of the same root inside one `<optgroup>`. */
 function CategoryOptionList({ options }: { options: CategoryOption[] }) {
-  const runs: Array<{ group?: string; items: CategoryOption[] }> = [];
+  const runs: Array<{ group?: string; key: string; items: CategoryOption[] }> = [];
   for (const o of options) {
     const last = runs.at(-1);
-    if (last && o.group && last.group === o.group) last.items.push(o);
-    else runs.push({ group: o.group, items: [o] });
+    const key = o.groupId ?? o.group ?? "";
+    if (last && o.group && last.key === key) last.items.push(o);
+    else runs.push({ group: o.group, key, items: [o] });
   }
   const opts = (items: CategoryOption[]) =>
     items.map((c) => (
@@ -158,7 +161,7 @@ function CategoryOptionList({ options }: { options: CategoryOption[] }) {
     ));
   return runs.map((run, i) =>
     run.group ? (
-      <optgroup key={`${run.group}-${i}`} label={run.group}>
+      <optgroup key={`${run.key}-${i}`} label={run.group}>
         {opts(run.items)}
       </optgroup>
     ) : (
