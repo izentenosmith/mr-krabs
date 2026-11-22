@@ -38,12 +38,11 @@ Mr Krabs replaces the household's current spreadsheet template (*Plantilla conta
 - **No audit trail**. → Change log (NFR-10).
 
 ### Default category tree (seed, es-CL)
-Groups mirror the spreadsheet so the household recognizes it on day one:
+Groups mirror the spreadsheet so the household recognizes it on day one. The seed is **only a starting point**: categories are user data, the app has no built-in category, and every seeded one can be renamed, moved, merged, archived or deleted (FR-BU-01, FR-BU-07).
 
 | Group (kind) | Seed categories |
 |---|---|
 | Ingresos (income) | Sueldo, Otros ingresos |
-| Inversiones y ahorros (*transfer targets, not expenses*) | Fondo de emergencia, Ahorro, Inversiones |
 | Gastos fijos | Arriendo / Dividendo, Gastos comunes, Gas, Luz, Agua, Internet, Servicio doméstico |
 | Gastos variables | Compras casa, Arreglos casa |
 | Comida | Supermercado, Delivery, Restaurantes |
@@ -51,6 +50,8 @@ Groups mirror the spreadsheet so the household recognizes it on day one:
 | Suscripciones | Streaming, Software, Otras |
 | Ocio | Viajes, Cine, Salidas |
 | Deudas | Intereses y comisiones (principal payments are transfers) |
+
+The spreadsheet's *Inversiones y ahorros* rows (Fondo de emergencia, Ahorro, Inversiones) are **seeded as savings/investment accounts, not categories**: moving money into them is a transfer, and transfers carry no category leg (FR-TX-02), so they never count as expenses.
 <!-- FEATURE-CATALOGUE:END -->
 
 ## Functional requirements
@@ -87,32 +88,36 @@ Groups mirror the spreadsheet so the household recognizes it on day one:
 | FR-AC-03 | M | Opening balance entry with date. |
 | FR-AC-04 | M | Archive (hide) an account without deleting history. |
 | FR-AC-05 | M | Credit cards: credit limit, billing cycle (*fecha de facturación*), due date (*fecha de pago*), national (CLP) and international (USD) sections. |
-| FR-AC-06 | S | Reconciliation: mark a statement balance at a date as reconciled; flag differences. |
+| FR-AC-06 | S | Reconciliation: mark a statement balance at a date as reconciled; flag differences. Reconciled transactions are **locked** against accidental edits until explicitly unlocked. |
+| FR-AC-07 | C | Manually valued assets (property, vehicle): the user records a value at a date; the change in value counts toward net worth, not income or expense. |
 
 ### Transactions
 | ID | P | Requirement |
 |---|---|---|
 | FR-TX-01 | M | Record income, expense and transfer with date, amount, account, category, payee, memo, tags. |
 | FR-TX-02 | M | **Transfers between own accounts never count as income or expense** (no double-counting). |
-| FR-TX-03 | M | Split a transaction across multiple categories. |
+| FR-TX-03 | M | Split a transaction across multiple categories; "distribute remainder" spreads what is left evenly or proportionally, with parts always summing exactly to the total. |
 | FR-TX-04 | M | **Installment purchases (*compras en cuotas*)**: record total, number of installments, installment amount, interest; generate the schedule; budget impact by month of installment (configurable: at purchase vs. per installment). |
 | FR-TX-05 | M | Credit card payment = transfer from checking to card (not an expense). |
 | FR-TX-06 | M | Status: `pending`, `cleared`, `reconciled`. |
-| FR-TX-07 | M | Duplicate detection on import (fingerprint: account, date ±2d, amount, normalized description). |
+| FR-TX-07 | M | Duplicate detection on import (fingerprint: account, date ±2d, amount, normalized description). Each staged row gets a **match score** against existing transactions and a proposed action (new / merge with existing / skip) the user can override. |
 | FR-TX-08 | M | Soft delete with undo; full audit history of edits. |
-| FR-TX-09 | S | Recurring transactions (rent, *gastos comunes*, subscriptions, salary) with auto-suggest. |
-| FR-TX-10 | S | Payee rules: auto-categorize by description pattern. |
+| FR-TX-09 | S | Recurring transactions (rent, *gastos comunes*, subscriptions, salary) with auto-suggest: the app **detects recurring patterns** in history and offers to create the rule, and on launch lists occurrences that came due while it was closed ("since last run") for one-click posting. |
+| FR-TX-10 | S | **Rules engine**: ordered rules in stages (*pre* → *default* → *post*); conditions on description, payee, amount, account and date (*is*, *contains*, *matches* regex, *one of*, *between*); actions set category, payee, memo, tags or status. Rules are created by hand or learned when the user re-categorizes ("create rule"), can be disabled, and can be applied to existing transactions as a bulk edit. |
 | FR-TX-11 | C | Attachments (receipt images) stored locally. |
+| FR-TX-12 | S | **Local learned categorizer** (no AI): suggests a category for an imported row from the words in its description, learned from the household's own past categorizations. Runs fully on-device, is on by default, and explains each suggestion; rules (FR-TX-10) take precedence over it. |
 
 ### Categories & budgets
 | ID | P | Requirement |
 |---|---|---|
-| FR-BU-01 | M | Two-level categories (group → category), separate income and expense trees; seed with a Chilean-household default set. |
+| FR-BU-01 | M | **Categories are user data.** A category tree of any depth, with separate income and expense trees; the household can create, rename, move, archive and delete any category, and nothing in the code depends on a specific category existing. Seeded with a Chilean-household default set that is editable like any other data. Any category, at any level, can receive transactions and budgets. |
 | FR-BU-02 | M | Monthly budget per category per scope (personal / household). |
 | FR-BU-03 | M | Budget vs. actual, remaining, and % used — computed in Rust. |
 | FR-BU-04 | S | Rollover of unused budget (per category toggle). |
 | FR-BU-05 | S | Savings goals (target amount + date) linked to an account. |
-| FR-BU-06 | M | Recurring/fixed bills can carry an **expected amount or min–max range**; actuals outside the range are flagged. |
+| FR-BU-06 | M | Recurring/fixed bills can carry an **expected amount, an approximate amount (± %) or a min–max range**; actuals outside it are flagged. |
+| FR-BU-07 | M | Deleting a category that has transactions or budgets requires choosing another category to **merge** them into; archiving hides it from pickers but keeps it in history and reports. Renames apply everywhere, including past periods, because everything references the category ID. |
+| FR-BU-08 | M | Reports and budgets **roll up** through the tree: a parent's actual and planned amounts include all its descendants, at every depth. |
 
 ### Reports
 | ID | P | Requirement |
@@ -124,6 +129,7 @@ Groups mirror the spreadsheet so the household recognizes it on day one:
 | FR-RP-05 | C | Year-over-year comparison. |
 | FR-RP-06 | M | **Month calendar view**: daily spend per category for a month (the spreadsheet's day grid), with quick-add on a day. |
 | FR-RP-07 | M | **Annual plan-vs-real matrix**: categories × 12 months × (planned, actual, difference), with group subtotals, monthly cash flow and total expenses rows. |
+| FR-RP-08 | C | Cash-flow **Sankey** diagram for a period: income sources → category groups → savings. |
 
 ### Currency
 | ID | P | Requirement |
@@ -137,11 +143,14 @@ Groups mirror the spreadsheet so the household recognizes it on day one:
 ### Import
 | ID | P | Requirement |
 |---|---|---|
-| FR-IM-01 | M | Import CSV / XLSX statements with saved column-mapping **profiles** per bank/account. |
+| FR-IM-01 | M | Import CSV / XLSX files with saved column-mapping **profiles** per bank/account. A profile can map any table of transactions (a bank statement or the household's own Excel list), including an optional **category column**. |
 | FR-IM-02 | M | Import PDF *estados de cuenta* for supported banks via deterministic parsers. |
 | FR-IM-03 | M | All imports go to a **staging area**; user reviews, edits, dedups, then commits. |
 | FR-IM-04 | S | **Optional AI extraction** for unsupported formats — see [06](06-statement-ingestion.md). Off by default. |
 | FR-IM-05 | M | Import batches are traceable and reversible (undo a whole import). |
+| FR-IM-06 | M | **Household spreadsheet import**: read the household's workbook (*Resumen* + twelve monthly sheets, category rows × day columns). Each non-empty day cell becomes a dated transaction in its row's category; *Resumen*'s planned values become monthly budget lines. The user picks the year, the default account and which rows are income, expense or savings (savings become transfers, see the seed note). Goes through staging like any import. |
+| FR-IM-07 | M | **Categories are matched by name on import** (case- and accent-insensitive, within the tree). Unknown names are listed in staging and the user maps each to an existing category or creates it there; nothing reaches the ledger with an unresolved category. Mappings are remembered per profile. |
+| FR-IM-08 | S | **Learned mappings are visible and editable**: one screen lists rules, remembered category mappings and the categorizer's strongest associations, so the user can correct or remove what the app has learned. |
 
 ### Sync
 | ID | P | Requirement |

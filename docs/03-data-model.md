@@ -55,6 +55,17 @@ All amounts below in CLP (0 decimals). Positive = debit (increase of assets/expe
 | USD purchase on card's international section | `card_usd −2 500` (USD minor = 25.00) · `cat:Software +2 500` (USD) | Reports convert to CLP with the rate of the date (Rust). |
 | Pay USD card section in CLP | `checking −23 750 (CLP)` · `fx:CLP +23 750` · `fx:USD −2 500` · `card_usd +2 500 (USD)` | `fx_exchange` entry balances per currency through an FX trading pair; both amounts are recorded, the rate is implied and auditable. |
 
+## Categories are data
+
+- A category is a row in `category`, referenced everywhere by its ID; **no code path names a specific category**. The seed tree is inserted as ordinary rows on household creation and can be edited or deleted like anything else (FR-BU-01).
+- `parent_id` forms a tree of **any depth**. Rust rejects cycles and a child whose `kind` differs from its parent's; both checks run in `mrk-domain` before every write, not in SQL.
+- Any node can be a posting leg or carry a budget line. Reports roll a node's amounts up through its descendants in Rust (FR-BU-08).
+- `kind` is only `income` or `expense`. Savings and investments are **accounts**, so money moved there is a transfer with no category leg (FR-TX-02).
+- Delete = merge: re-point the category's postings and budget lines to a chosen target, then soft-delete it, in one transaction (FR-BU-07). Archive sets `is_archived` and keeps history intact.
+- Imports resolve categories by normalized name (case- and accent-insensitive) in Rust; unresolved names stay in staging until the user maps or creates them (FR-IM-07).
+
+Planned schema additions (forward migrations, M5): `payee_rule` in 0001 holds one condition and two actions; the staged rules engine (FR-TX-10) extends it with a stage and condition/action lists. The local categorizer (FR-TX-12) needs **no table**: its word → category model is derived in Rust from the categorized entries already in the ledger (principle 1), so it is rebuilt on demand, both devices learn from synced history, and there are no counters to conflict.
+
 ## Rust domain model (sketch)
 
 ```rust
