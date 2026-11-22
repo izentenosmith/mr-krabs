@@ -2,7 +2,7 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import type { AccountSummaryDto } from "@mr-krabs/api-client";
 
-import { account, renderApp, withHousehold } from "@/acceptance/harness";
+import { account, detail, renderApp, withHousehold } from "@/acceptance/harness";
 
 const api = vi.hoisted(() => ({
   app: { health: vi.fn(), bootstrap: vi.fn() },
@@ -50,5 +50,32 @@ describe("accounts sidebar", () => {
 
     release([live, old]);
     expect(await s.findByText("Cerrada")).toBeInTheDocument();
+  });
+
+  it("X-8/X-9: editing a EUR account re-sends its opening balance display text verbatim", async () => {
+    const eur = account("a-eur", "Cuenta Euro", "savings", "€1.234,56", { currency: "EUR" });
+    api.account.list.mockResolvedValue([eur]);
+    api.account.get.mockResolvedValue(
+      detail(eur, { amount: { minor: "123456", currency: "EUR", display: "€1.234,56" }, date: "2026-11-01" }),
+    );
+    api.account.update.mockResolvedValue(eur.account);
+    renderApp();
+    const s = within(await screen.findByRole("region", { name: "Cuentas" }));
+    fireEvent.click(await s.findByRole("button", { name: "Editar Cuenta Euro" }));
+    const d = within(await screen.findByRole("dialog", { name: "Editar cuenta" }));
+    await waitFor(() =>
+      expect((d.getByLabelText("Saldo inicial") as HTMLInputElement).value).toBe("€1.234,56"),
+    );
+
+    fireEvent.click(d.getByRole("button", { name: "Guardar" }));
+    await waitFor(() =>
+      expect(api.account.update).toHaveBeenCalledWith(
+        "a-eur",
+        expect.objectContaining({
+          currency: "EUR",
+          openingBalance: { amount: { amount: "€1.234,56", currency: "EUR" }, date: "2026-11-01" },
+        }),
+      ),
+    );
   });
 });
