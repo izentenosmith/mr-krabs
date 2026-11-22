@@ -89,7 +89,7 @@ export function AccountDialog({ state, onOpenChange, onSubmit, onArchive }: Acco
             detail={state.detail}
             defaults={valuesFrom(state.detail)}
             onSubmit={onSubmit}
-            onArchive={onArchive}
+            onArchive={state.detail.account.isArchived ? undefined : onArchive}
             onCancel={() => onOpenChange(false)}
           />
         )}
