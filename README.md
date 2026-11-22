@@ -17,6 +17,19 @@ Mr Krabs tracks **personal** and **household** finances for a two-person househo
 | Default currency | **CLP** (configurable; multi-currency supported) |
 | AI | **Optional**, off by default — assists importing bank *estados de cuenta* |
 
+## Why I built this
+
+My partner and I track our money in a spreadsheet. We both have to keep it up to date, and when we edit it at the same time, keeping the copies in sync is a pain. We wanted something that is:
+
+- **Just for us** — not a product, not a service.
+- **Free** — not a single dime on subscriptions or hosting.
+- **Safe from the internet** — our data stays on our own devices.
+- **Easy** to use, install, move to a new machine and sync between the two of us.
+
+We tried Notion and it didn't work out. We tried a cloud spreadsheet and it was worse. I looked at many open-source projects and subscription apps; some are genuinely interesting, but they all fall into the same trap: they live on the internet, our data ends up somewhere else, and none of them feel like ours.
+
+So Mr Krabs is also a project we build together — shaped around our own needs and our own experience managing a household.
+
 ## Status
 
 🏗️ **M0 — foundation ✅.** Workspace, Docker dev environment, CI, first tested core crates and the [UI design system](design-system/mr-krabs/MASTER.md) are in place, along with the libraries M1 builds on. Next: the [M1 vertical slice](docs/07-roadmap.md).
