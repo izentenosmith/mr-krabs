@@ -50,7 +50,7 @@ async fn invoke(
 
 fn run(app: &Shared, command: &str, args: Value) -> Response {
     let result = match app.lock() {
-        Ok(guard) => commands::dispatch(&guard, command, args),
+        Ok(mut guard) => commands::dispatch(&mut guard, command, args),
         Err(_) => Err(ApiError::internal("core lock poisoned")),
     };
     match result {
@@ -61,8 +61,12 @@ fn run(app: &Shared, command: &str, args: Value) -> Response {
 
 fn status_for(code: ErrorCode) -> StatusCode {
     match code {
-        ErrorCode::Validation => StatusCode::UNPROCESSABLE_ENTITY,
+        ErrorCode::Validation | ErrorCode::CurrencyMismatch | ErrorCode::UnbalancedEntry => {
+            StatusCode::UNPROCESSABLE_ENTITY
+        }
         ErrorCode::NotFound | ErrorCode::UnknownCommand => StatusCode::NOT_FOUND,
+        ErrorCode::Conflict => StatusCode::CONFLICT,
+        ErrorCode::NotImplemented => StatusCode::NOT_IMPLEMENTED,
         ErrorCode::Internal => StatusCode::INTERNAL_SERVER_ERROR,
     }
 }
@@ -178,5 +182,41 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn m1_stubs_are_501_not_implemented() {
+        let req = Request::post("/api/invoke/account_list")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"query":{"view":"combined"}}"#))
+            .unwrap();
+        let resp = test_router().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_IMPLEMENTED);
+        assert_eq!(body_json(resp).await["code"], "NOT_IMPLEMENTED");
+    }
+
+    #[tokio::test]
+    async fn lists_every_command() {
+        let resp = test_router()
+            .oneshot(Request::get("/api/commands").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let listed = body_json(resp).await;
+        assert_eq!(listed.as_array().unwrap().len(), commands::COMMANDS.len());
+        assert!(listed.as_array().unwrap().contains(&Value::from("tx_list")));
+    }
+
+    #[test]
+    fn new_error_codes_map_to_http_statuses() {
+        assert_eq!(status_for(ErrorCode::Conflict), StatusCode::CONFLICT);
+        assert_eq!(
+            status_for(ErrorCode::CurrencyMismatch),
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+        assert_eq!(
+            status_for(ErrorCode::UnbalancedEntry),
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
     }
 }
