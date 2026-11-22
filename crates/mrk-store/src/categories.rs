@@ -70,6 +70,10 @@ pub struct CategoryRow {
     pub id: String,
     pub parent_id: Option<String>,
     pub kind: String,
+    pub name: String,
+    pub icon: Option<String>,
+    pub is_archived: bool,
+    pub sort_order: i64,
     pub deleted: bool,
 }
 
@@ -169,16 +173,21 @@ impl Store {
 
     /// Every category row, live and deleted, for the tree rules.
     pub fn category_rows(&self) -> Result<Vec<CategoryRow>> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT id, parent_id, kind, deleted FROM category ORDER BY id")?;
+        let mut stmt = self.conn.prepare(
+            "SELECT id, parent_id, kind, name, icon, is_archived, sort_order, deleted \
+                 FROM category ORDER BY id",
+        )?;
         let rows = stmt
             .query_map([], |r| {
                 Ok(CategoryRow {
                     id: r.get(0)?,
                     parent_id: r.get(1)?,
                     kind: r.get(2)?,
-                    deleted: r.get::<_, i64>(3)? == 1,
+                    name: r.get(3)?,
+                    icon: r.get(4)?,
+                    is_archived: r.get(5)?,
+                    sort_order: r.get(6)?,
+                    deleted: r.get(7)?,
                 })
             })?
             .collect::<std::result::Result<_, _>>()?;
