@@ -13,6 +13,7 @@ import { TransactionsPage } from "./TransactionsPage";
 const api = vi.hoisted(() => ({
   account: { list: vi.fn() },
   tx: { list: vi.fn(), get: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
+  category: { tree: vi.fn() },
 }));
 
 vi.mock("@mr-krabs/api-client", async (importOriginal) => ({
@@ -90,6 +91,7 @@ function renderPage() {
 beforeEach(() => {
   vi.clearAllMocks();
   api.account.list.mockResolvedValue([]);
+  api.category.tree.mockResolvedValue([]);
 });
 afterEach(() => toast.dismiss());
 
@@ -349,5 +351,17 @@ describe("TransactionsPage with the app's retry policy", () => {
     );
     expect(await screen.findByText("Aún no disponible", {}, { timeout: 500 })).toBeInTheDocument();
     expect(api.tx.list).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("TransactionsPage categories", () => {
+  it("a failing category_tree shows its code's copy with a retry instead of an empty picker", async () => {
+    api.tx.list.mockResolvedValue({ items: [row], nextCursor: null });
+    api.category.tree.mockRejectedValueOnce(new ApiError("INTERNAL", "dev"));
+    renderPage();
+    expect(await screen.findByRole("alert")).toHaveTextContent("Algo salió mal. Intenta de nuevo.");
+    fireEvent.click(screen.getByRole("button", { name: "Reintentar" }));
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+    expect(api.category.tree).toHaveBeenCalledTimes(3);
   });
 });

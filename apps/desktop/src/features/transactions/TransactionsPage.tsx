@@ -90,6 +90,10 @@ export function TransactionsPage({ accountId, onAccountIdChange }: TransactionsP
   });
   // Stable across renders that don't change the pages, so the table keeps its row model (F31).
   const rows = useMemo(() => list.data?.pages.flatMap((p) => p.items) ?? NO_ROWS, [list.data]);
+  // What the toolbar and dialog need besides the list; a failure (not NOT_IMPLEMENTED,
+  // which isn't an error) shows one alert instead of silently empty selects.
+  const support = [accounts, expenseTree, incomeTree];
+  const supportFailure = support.find((q) => q.isError && !isNotImplemented(q.error));
   // Q12: the core answers NOT_IMPLEMENTED until the transactions slice lands.
   const notAvailable = list.isError && isNotImplemented(list.error);
 
@@ -177,12 +181,12 @@ export function TransactionsPage({ accountId, onAccountIdChange }: TransactionsP
           {t("tx.new")}
         </Button>
       </header>
-      {accounts.isError && !notAvailable && (
-        // One alert for both loads; its retry also retries a failed list (F43).
+      {supportFailure && !notAvailable && (
+        // One alert for every failed load; its retry retries them all (F43).
         <LoadError
-          error={accounts.error}
+          error={supportFailure.error}
           onRetry={() => {
-            void accounts.refetch();
+            for (const q of support) if (q.isError) void q.refetch();
             if (list.isError) void list.refetch();
           }}
         />
@@ -194,7 +198,7 @@ export function TransactionsPage({ accountId, onAccountIdChange }: TransactionsP
           {t("shell.loading")}
         </p>
       ) : list.isError && !list.data ? (
-        accounts.isError ? null : (
+        supportFailure ? null : (
           <LoadError error={list.error} onRetry={() => void list.refetch()} />
         )
       ) : rows.length === 0 ? (
