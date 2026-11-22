@@ -1,7 +1,7 @@
 import { createHashHistory, createRoute, createRouter, type RouterHistory } from "@tanstack/react-router";
 
 import { HomePage } from "@/routes/home";
-import { createTransactionsRoute } from "@/routes/transactions";
+import { transactionsRoute } from "@/routes/transactions";
 import { appLayoutRoute, rootRoute } from "@/routes/tree";
 
 const homeRoute = createRoute({ getParentRoute: () => appLayoutRoute, path: "/", component: HomePage });
@@ -10,7 +10,7 @@ const homeRoute = createRoute({ getParentRoute: () => appLayoutRoute, path: "/",
  * Screens inside the app shell. ui-transactions (S7) adds its route here; its nav item goes
  * in `navItems` (routes/nav.ts).
  */
-const appChildRoutes = [homeRoute, createTransactionsRoute(() => appLayoutRoute)];
+const appChildRoutes = [homeRoute, transactionsRoute];
 
 const routeTree = rootRoute.addChildren([appLayoutRoute.addChildren(appChildRoutes)]);
 

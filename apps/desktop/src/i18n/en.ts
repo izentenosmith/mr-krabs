@@ -33,6 +33,7 @@ export const en: Messages<typeof esCL> = {
     loading: "Loading…",
     bootstrapError: "We couldn't start the app",
     retry: "Retry",
+    transactions: "Transactions",
   },
   onboarding: {
     title: "Welcome to Mr Krabs",

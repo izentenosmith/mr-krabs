@@ -1,6 +1,7 @@
-import { createRoute, useNavigate, useSearch, type AnyRoute } from "@tanstack/react-router";
+import { createRoute } from "@tanstack/react-router";
 
 import { TransactionsPage, type CategoryOptions } from "@/features/transactions/TransactionsPage";
+import { appLayoutRoute } from "@/routes/tree";
 
 export interface TransactionsSearch {
   accountId?: string;
@@ -10,8 +11,8 @@ export interface TransactionsSearch {
 const NO_CATEGORIES: CategoryOptions = { expense: [], income: [] };
 
 function TransactionsRoutePage() {
-  const { accountId } = useSearch({ from: "/transactions" });
-  const navigate = useNavigate({ from: "/transactions" });
+  const { accountId } = transactionsRoute.useSearch();
+  const navigate = transactionsRoute.useNavigate();
   return (
     <TransactionsPage
       accountId={accountId}
@@ -21,15 +22,13 @@ function TransactionsRoutePage() {
   );
 }
 
-/** `/transactions?accountId=<id>`; the shell decides where it hangs. */
-export function createTransactionsRoute(getParentRoute: () => AnyRoute) {
-  return createRoute({
-    getParentRoute,
-    path: "/transactions",
-    validateSearch: (search: Record<string, unknown>): TransactionsSearch =>
-      typeof search.accountId === "string" && search.accountId !== ""
-        ? { accountId: search.accountId }
-        : {},
-    component: TransactionsRoutePage,
-  });
-}
+/** `/transactions?accountId=<id>`, a screen inside the app shell (S6's layout route). */
+export const transactionsRoute = createRoute({
+  getParentRoute: () => appLayoutRoute,
+  path: "/transactions",
+  validateSearch: (search: Record<string, unknown>): TransactionsSearch =>
+    typeof search.accountId === "string" && search.accountId !== ""
+      ? { accountId: search.accountId }
+      : {},
+  component: TransactionsRoutePage,
+});

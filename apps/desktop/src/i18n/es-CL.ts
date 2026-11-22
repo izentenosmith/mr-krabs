@@ -29,6 +29,7 @@ export const esCL = {
     loading: "Cargando…",
     bootstrapError: "No pudimos iniciar la app",
     retry: "Reintentar",
+    transactions: "Transacciones",
   },
   onboarding: {
     title: "Te damos la bienvenida a Mr Krabs",
