@@ -32,6 +32,8 @@ export interface TxDialogProps {
   accounts: AccountDto[];
   categories: CategoryOptions;
   onSubmit: (input: NewTxInput) => Promise<void>;
+  /** Edit mode only: deletes the transaction (undo is offered by the caller). */
+  onDelete?: () => Promise<void>;
 }
 
 /** Today's civil date (`YYYY-MM-DD`) in local time, the dialog's default date. */
@@ -147,6 +149,7 @@ export function TxDialog({
   accounts,
   categories,
   onSubmit,
+  onDelete,
 }: TxDialogProps) {
   const { t, i18n } = useTranslation();
   const { register, handleSubmit, watch, setError, formState } = useForm<FormValues>({
@@ -301,6 +304,16 @@ export function TxDialog({
           />
 
           <DialogFooter>
+            {onDelete && (
+              <Button
+                type="button"
+                variant="ghost"
+                className="text-destructive sm:mr-auto"
+                onClick={() => void onDelete()}
+              >
+                {t("tx.form.delete")}
+              </Button>
+            )}
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               {t("tx.form.cancel")}
             </Button>

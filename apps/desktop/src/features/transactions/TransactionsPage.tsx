@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Plus } from "lucide-react";
+import { toast } from "sonner";
 import { api, type NewTxInput, type TxDetailDto, type TxRowDto } from "@mr-krabs/api-client";
 
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,7 @@ export interface TransactionsPageProps {
 }
 
 const PAGE_SIZE = 100; // design Q8
+const UNDO_MS = 8000; // MASTER §7.2 undo toast
 
 type DialogState = { mode: "create" } | { mode: "edit"; detail: TxDetailDto } | null;
 
@@ -70,6 +72,21 @@ export function TransactionsPage({ accountId, categories }: TransactionsPageProp
     void refresh();
   };
 
+  const restore = async (id: string) => {
+    await api.tx.restore(id);
+    void refresh();
+  };
+
+  const remove = async (id: string) => {
+    await api.tx.delete(id);
+    setDialog(null);
+    void refresh();
+    toast(t("tx.deleted"), {
+      duration: UNDO_MS,
+      action: { label: t("tx.undo"), onClick: () => void restore(id) },
+    });
+  };
+
   return (
     <section className="flex min-h-0 flex-1 flex-col gap-4">
       <header className="flex h-11 items-center justify-between gap-3">
@@ -95,6 +112,7 @@ export function TransactionsPage({ accountId, categories }: TransactionsPageProp
           accounts={accountOptions}
           categories={categories}
           onSubmit={save}
+          onDelete={dialog.mode === "edit" ? () => remove(dialog.detail.id) : undefined}
         />
       )}
     </section>
