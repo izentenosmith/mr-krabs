@@ -1,0 +1,10 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc a71f1a77f2ecf8060a051460ae206614a9e587fc55b3104fab92b97bbf7d254c # shrinks to dir = false, v = 1
+cc 03f32ebc7c1e31fe896cbc81723cc75b2b348f7a13c5ec3c5b0ff1b374710042 # shrinks to tx = Expense { account: "checking", category: "supermercado", amount: Money { minor: 1, currency: CurrencyCode(CLP) } }
+cc 0ffc729fa1ffe4d2c3a1f3a566fe81becfa7b35413b7878af01254585cf5b844 # shrinks to old = Expense { account: "checking", category: "supermercado", amount: Money { minor: 1, currency: CurrencyCode(CLP) } }, new = Expense { account: "checking", category: "supermercado", amount: Money { minor: 1, currency: CurrencyCode(CLP) } }
+cc ba07612a63be96bab4f9f9f3fe40d1ee8d013f331b16c5c6459824b83ad247ee # shrinks to legs = [], as_of_day = 1
