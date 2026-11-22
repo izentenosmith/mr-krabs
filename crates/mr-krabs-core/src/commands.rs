@@ -132,9 +132,6 @@ pub fn dispatch(app: &mut App, name: &str, args: Value) -> Result<Value, ApiErro
 /// next to the rest of `App`), keeping the signature the shells and bindings rely on.
 /// Household and account commands live in `household.rs` / `accounts.rs` (S4).
 impl App {
-    pub fn tx_list(&self, _query: TxQuery) -> Result<Page<TxRowDto>, ApiError> {
-        Err(ApiError::not_implemented("tx_list"))
-    }
     pub fn tx_update(&mut self, _id: String, _input: NewTxInput) -> Result<TxDetailDto, ApiError> {
         Err(ApiError::not_implemented("tx_update"))
     }

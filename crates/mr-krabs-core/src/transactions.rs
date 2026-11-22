@@ -2,14 +2,16 @@
 //! the ledger rules in `mrk-domain` and the store's one entry path (design Q1, Q6, Q8).
 //! Opening-balance entries are listed and read here but belong to their account (S4).
 
+use std::collections::BTreeMap;
+
 use mrk_domain::{
     AccountInfo, DomainError, EntryKind, JournalEntry, LedgerContext, Leg, LegStatus, NewTx,
     Posting, StoredLeg, TxType, classify, roles, validate_civil_date,
 };
 use mrk_money::Money;
-use mrk_store::{EntryRow, PostingRow, Visibility};
+use mrk_store::{EntryFilter, EntryRow, PostingRow, ScopeFilter, Visibility};
 
-use crate::api::{self, NewTxInput, TxDetailDto, TxKind};
+use crate::api::{self, NewTxInput, Page, TxDetailDto, TxKind, TxQuery, TxRowDto, View};
 use crate::support::{
     Fields, check_id, command, domain_error, field_error, new_id, parse_amount, posting_row,
     stored_leg,
@@ -20,6 +22,12 @@ const DESCRIPTION_MAX: usize = 500;
 const MEMO_MAX: usize = 2_000;
 const REGULAR: &str = "regular";
 const OPENING_BALANCE: &str = "opening_balance";
+const LIMIT_DEFAULT: u32 = 100;
+const LIMIT_MAX: u32 = 500;
+/// Separates the date and the id in a page cursor.
+const CURSOR_SEP: char = '~';
+/// MASTER §2: expenses lead with U+2212, never an ASCII hyphen.
+const MINUS: char = '\u{2212}';
 
 /// A checked `NewTxInput`: the transaction, its legs and its header.
 struct Checked {
@@ -49,6 +57,102 @@ impl App {
 
     pub fn tx_get(&self, id: String) -> Result<TxDetailDto, ApiError> {
         command("tx_get", || self.detail(&id))
+    }
+
+    pub fn tx_list(&self, query: TxQuery) -> Result<Page<TxRowDto>, ApiError> {
+        command("tx_list", || {
+            let mut f = Fields::default();
+            let limit = query.limit.unwrap_or(LIMIT_DEFAULT);
+            if !(1..=LIMIT_MAX).contains(&limit) {
+                f.add("limit", "outOfRange");
+            }
+            for (field, date) in [("from", &query.from), ("to", &query.to)] {
+                if date
+                    .as_deref()
+                    .is_some_and(|d| validate_civil_date(d).is_err())
+                {
+                    f.add(field, "invalidDate");
+                }
+            }
+            let after = query.cursor.as_deref().map(decode_cursor);
+            if after.as_ref().is_some_and(Option::is_none) {
+                f.add("cursor", "invalid");
+            }
+            f.finish()?;
+            if let Some(a) = &query.account_id {
+                check_id(a)?;
+                if self.store.account(a)?.is_none() {
+                    return Err(ApiError::new(
+                        ErrorCode::NotFound,
+                        format!("no account {a}"),
+                    ));
+                }
+            }
+            let scope = match query.view {
+                View::Combined => None,
+                View::Household => Some(ScopeFilter {
+                    scope: "household".into(),
+                    owner_member_id: None,
+                }),
+                View::Personal => match self.store.local_member_id()? {
+                    Some(me) => Some(ScopeFilter {
+                        scope: "personal".into(),
+                        owner_member_id: Some(me),
+                    }),
+                    None => {
+                        return Ok(Page {
+                            items: Vec::new(),
+                            next_cursor: None,
+                        });
+                    }
+                },
+            };
+            let mut entries = self.store.entry_page(&EntryFilter {
+                account_id: query.account_id.clone(),
+                from: query.from.clone(),
+                to: query.to.clone(),
+                scope,
+                after: after.flatten(),
+                // One more than the page: its presence says there is a next page.
+                limit: limit + 1,
+            })?;
+            let next_cursor = (entries.len() > limit as usize).then(|| {
+                entries.truncate(limit as usize);
+                entries
+                    .last()
+                    .map(|e| format!("{}{CURSOR_SEP}{}", e.entry_date, e.id))
+                    .unwrap_or_default()
+            });
+            let ids: Vec<String> = entries.iter().map(|e| e.id.clone()).collect();
+            let mut legs: BTreeMap<String, Vec<StoredLeg>> = BTreeMap::new();
+            for p in self.store.postings_of(&ids)?.iter().filter(|p| !p.deleted) {
+                legs.entry(p.entry_id.clone())
+                    .or_default()
+                    .push(stored_leg(p)?);
+            }
+            let names = Names {
+                accounts: self
+                    .store
+                    .accounts()?
+                    .into_iter()
+                    .map(|a| (a.id, a.name))
+                    .collect(),
+                categories: self
+                    .store
+                    .category_rows()?
+                    .into_iter()
+                    .map(|c| (c.id, c.name))
+                    .collect(),
+            };
+            let items = entries
+                .iter()
+                .map(|e| {
+                    let legs = legs.get(&e.id).map(Vec::as_slice).unwrap_or_default();
+                    tx_row(e, legs, query.account_id.as_deref(), &names)
+                })
+                .collect::<Result<_, _>>()?;
+            Ok(Page { items, next_cursor })
+        })
     }
 
     /// Validates `entry` against the live accounts and categories it posts to and writes it,
@@ -196,6 +300,96 @@ impl App {
     }
 }
 
+/// Display names for the rows of a page.
+struct Names {
+    accounts: BTreeMap<String, String>,
+    categories: BTreeMap<String, String>,
+}
+
+impl Names {
+    fn of(map: &BTreeMap<String, String>, id: &str) -> String {
+        map.get(id).cloned().unwrap_or_default()
+    }
+}
+
+/// A cursor the server issued: `<entry_date>~<id>`. Anything else is `None`.
+fn decode_cursor(cursor: &str) -> Option<(String, String)> {
+    let (date, id) = cursor.split_once(CURSOR_SEP)?;
+    validate_civil_date(date).ok()?;
+    check_id(id).ok()?;
+    Some((date.to_owned(), id.to_owned()))
+}
+
+/// One row, seen from `account` when the entry has a leg on it, else from its account leg.
+fn tx_row(
+    entry: &EntryRow,
+    legs: &[StoredLeg],
+    account: Option<&str>,
+    names: &Names,
+) -> Result<TxRowDto, ApiError> {
+    let (account_leg, counter) = roles(legs).map_err(internal)?;
+    let seen_from_counter = account.is_some()
+        && matches!(&counter.posting.leg, Leg::Account(a) if Some(a.as_str()) == account);
+    let (seen, other) = if seen_from_counter {
+        (counter, account_leg)
+    } else {
+        (account_leg, counter)
+    };
+    let kind = tx_kind(entry, legs)?;
+    let account_id = target(&seen.posting.leg).unwrap_or_default();
+    let (category_id, counter_account_id) = match &other.posting.leg {
+        Leg::Category(c) => (Some(c.clone()), None),
+        Leg::Account(a) => (None, Some(a.clone())),
+        Leg::FxTrading => (None, None),
+    };
+    let status = seen
+        .status
+        .ok_or_else(|| ApiError::internal(format!("account leg {} has no status", seen.id)))?;
+    Ok(TxRowDto {
+        id: entry.id.clone(),
+        date: entry.entry_date.clone(),
+        kind,
+        description: entry.description.clone(),
+        account_name: Names::of(&names.accounts, &account_id),
+        account_id,
+        category_name: category_id
+            .as_deref()
+            .map(|c| Names::of(&names.categories, c)),
+        category_id,
+        counter_account_name: counter_account_id
+            .as_deref()
+            .map(|a| Names::of(&names.accounts, a)),
+        counter_account_id,
+        amount: row_amount(kind, seen.posting.amount)?,
+        status: api_status(status),
+    })
+}
+
+/// The row's money: `minor` signed as seen from its account; `display` per MASTER §2 (X-7):
+/// expense `−$45.990`, income `+$1.000`, transfer unsigned, opening balance by its sign.
+fn row_amount(kind: TxKind, amount: Money) -> Result<MoneyDto, ApiError> {
+    let unsigned = abs(amount)?.display_es_cl();
+    let sign = match kind {
+        TxKind::Expense => Some(MINUS),
+        TxKind::Income => Some('+'),
+        TxKind::Transfer => None,
+        TxKind::OpeningBalance if amount.minor < 0 => Some(MINUS),
+        TxKind::OpeningBalance => Some('+'),
+    };
+    Ok(MoneyDto {
+        display: sign.map_or_else(|| unsigned.clone(), |s| format!("{s}{unsigned}")),
+        ..MoneyDto::from_money(amount)
+    })
+}
+
+fn api_status(s: LegStatus) -> api::LegStatus {
+    match s {
+        LegStatus::Pending => api::LegStatus::Pending,
+        LegStatus::Cleared => api::LegStatus::Cleared,
+        LegStatus::Reconciled => api::LegStatus::Reconciled,
+    }
+}
+
 /// Checks the header and amount, then expands the input into its legs.
 fn check_input(input: &NewTxInput) -> Result<Checked, ApiError> {
     let (amount, date, description, memo) = match input {
@@ -314,11 +508,11 @@ fn tx_kind(entry: &EntryRow, legs: &[StoredLeg]) -> Result<TxKind, ApiError> {
 /// pending, reconciled once every leg is, cleared otherwise.
 fn entry_status(legs: &[StoredLeg]) -> api::LegStatus {
     let statuses: Vec<LegStatus> = legs.iter().filter_map(|l| l.status).collect();
-    if statuses.contains(&LegStatus::Pending) {
-        api::LegStatus::Pending
+    api_status(if statuses.contains(&LegStatus::Pending) {
+        LegStatus::Pending
     } else if !statuses.is_empty() && statuses.iter().all(|s| *s == LegStatus::Reconciled) {
-        api::LegStatus::Reconciled
+        LegStatus::Reconciled
     } else {
-        api::LegStatus::Cleared
-    }
+        LegStatus::Cleared
+    })
 }
