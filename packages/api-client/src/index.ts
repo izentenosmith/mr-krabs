@@ -6,6 +6,8 @@ import type {
   AccountListQuery,
   AccountSummaryDto,
   BootstrapDto,
+  CategoryNodeDto,
+  CategoryTreeQuery,
   HealthDto,
   HouseholdDto,
   HouseholdInput,
@@ -47,6 +49,9 @@ export function createApi(invoke: Invoke) {
       update: (id: string, input: AccountInput) =>
         invoke<AccountDto>("account_update", { id, input }),
       archive: (id: string) => invoke<AccountDto>("account_archive", { id }),
+    },
+    category: {
+      tree: (query: CategoryTreeQuery) => invoke<CategoryNodeDto[]>("category_tree", { query }),
     },
     tx: {
       create: (input: NewTxInput) => invoke<TxDetailDto>("tx_create", { input }),

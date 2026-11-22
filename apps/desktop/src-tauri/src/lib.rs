@@ -5,7 +5,8 @@ use std::sync::Mutex;
 
 use mr_krabs_core::api::{
     AccountDetailDto, AccountDto, AccountInput, AccountListQuery, AccountSummaryDto, BootstrapDto,
-    HouseholdDto, HouseholdInput, NewTxInput, Page, SettingsDto, TxDetailDto, TxQuery, TxRowDto,
+    CategoryNodeDto, CategoryTreeQuery, HouseholdDto, HouseholdInput, NewTxInput, Page,
+    SettingsDto, TxDetailDto, TxQuery, TxRowDto,
 };
 use mr_krabs_core::{ApiError, App, HealthDto, MoneyDto, MoneyInput};
 use tauri::{Manager, State};
@@ -93,6 +94,14 @@ fn account_archive(core: State<'_, Core>, id: String) -> Result<AccountDto, ApiE
 }
 
 #[tauri::command]
+fn category_tree(
+    core: State<'_, Core>,
+    query: CategoryTreeQuery,
+) -> Result<Vec<CategoryNodeDto>, ApiError> {
+    with_core(&core, |app| app.category_tree(query))
+}
+
+#[tauri::command]
 fn tx_create(core: State<'_, Core>, input: NewTxInput) -> Result<TxDetailDto, ApiError> {
     with_core_mut(&core, |app| app.tx_create(input))
 }
@@ -177,6 +186,7 @@ pub fn run() {
             account_create,
             account_update,
             account_archive,
+            category_tree,
             tx_create,
             tx_get,
             tx_list,

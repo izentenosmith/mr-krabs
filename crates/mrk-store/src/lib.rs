@@ -9,12 +9,20 @@ use std::time::Duration;
 
 use rusqlite::Connection;
 
+mod accounts;
 mod categories;
 mod change_log;
+mod entries;
+mod households;
+mod write;
+
+pub use accounts::{AccountLegRow, AccountRow};
+pub use entries::{EntryRow, PostingRow};
+pub use households::{HouseholdRow, MemberRow};
+pub use write::Write;
 
 pub use categories::{
-    BudgetLineAmount, CategoryMergeWrite, CategoryRow, HouseholdSettings, SeedAccount,
-    SeedCategory, SeedReport, Stamp,
+    BudgetLineAmount, CategoryMergeWrite, CategoryRow, SeedAccount, SeedCategory, SeedReport, Stamp,
 };
 pub use change_log::{Row, Visibility};
 

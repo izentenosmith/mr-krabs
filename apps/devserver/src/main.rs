@@ -186,7 +186,7 @@ mod tests {
 
     #[tokio::test]
     async fn m1_stubs_are_501_not_implemented() {
-        let req = Request::post("/api/invoke/account_list")
+        let req = Request::post("/api/invoke/tx_list")
             .header("content-type", "application/json")
             .body(Body::from(r#"{"query":{"view":"combined"}}"#))
             .unwrap();

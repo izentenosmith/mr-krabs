@@ -76,6 +76,29 @@ export type BootstrapDto = {
 /**  How installment purchases count against budgets (docs/03). */
 export type BudgetMode = "at_purchase" | "per_installment";
 
+export type CategoryKind = "expense" | "income";
+
+/**
+ *  One node of the live category tree (any depth): seeded and user categories, archived
+ *  ones flagged, deleted and merged ones left out.
+ */
+export type CategoryNodeDto = {
+	id: string,
+	/**  `null` at a root. */
+	parentId: string | null,
+	kind: CategoryKind,
+	name: string,
+	icon: string | null,
+	isArchived: boolean,
+	sortOrder: number,
+	children: CategoryNodeDto[],
+};
+
+/**  `category_tree` filter: one kind's tree, or both. */
+export type CategoryTreeQuery = {
+	kind?: CategoryKind | null,
+};
+
 /**  An expense or income: money out of / into `accountId`, against `categoryId`. */
 export type CategoryTxInput = {
 	accountId: string,

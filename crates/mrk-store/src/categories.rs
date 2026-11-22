@@ -7,7 +7,7 @@
 
 use rusqlite::{OptionalExtension, ToSql, Transaction, params};
 
-use crate::{Result, Store, Visibility};
+use crate::{Result, Store, Visibility, Write};
 
 /// HLC timestamp and device a change is stamped with (issued by the local clock).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -57,19 +57,15 @@ pub struct SeedReport {
     pub accounts_inserted: usize,
 }
 
-/// The household's typed settings (schema v2 `household`).
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct HouseholdSettings {
-    pub id: String,
-    pub base_currency_code: String,
-    pub locale: String,
-}
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CategoryRow {
     pub id: String,
     pub parent_id: Option<String>,
     pub kind: String,
+    pub name: String,
+    pub icon: Option<String>,
+    pub is_archived: bool,
+    pub sort_order: i64,
     pub deleted: bool,
 }
 
@@ -96,89 +92,33 @@ pub struct CategoryMergeWrite {
 }
 
 impl Store {
-    /// The single household of this database, if one was created.
-    pub fn household_settings(&self) -> Result<Option<HouseholdSettings>> {
-        Ok(self
-            .conn
-            .query_row(
-                "SELECT id, base_currency_code, locale FROM household WHERE deleted = 0 LIMIT 1",
-                [],
-                |r| {
-                    Ok(HouseholdSettings {
-                        id: r.get(0)?,
-                        base_currency_code: r.get(1)?,
-                        locale: r.get(2)?,
-                    })
-                },
-            )
-            .optional()?)
-    }
-
-    /// Inserts the default categories and accounts. Idempotent: a row whose id exists, live
-    /// or deleted, is left alone, so deleted seed rows are never resurrected (ADR-0008).
+    /// Inserts the default categories and accounts in their own transaction (see
+    /// [`Write::seed_defaults`]).
     pub fn seed_defaults(
         &mut self,
         categories: &[SeedCategory],
         accounts: &[SeedAccount],
     ) -> Result<SeedReport> {
-        let seed = Stamp::seed();
-        let tx = self.conn.transaction()?;
-        let mut report = SeedReport::default();
-        // Seed id → id actually used (differs when a user category already holds the name).
-        let mut resolved: std::collections::HashMap<String, String> = Default::default();
-        for c in categories {
-            let parent = c
-                .parent_id
-                .as_ref()
-                .map(|p| resolved.get(p).cloned().unwrap_or_else(|| p.clone()));
-            let existing: Option<String> = tx
-                .query_row(
-                    "SELECT id FROM category
-                     WHERE deleted = 0 AND kind = ?1 AND ifnull(parent_id, '') = ifnull(?2, '')
-                       AND name_key = ?3 AND id <> ?4",
-                    params![c.kind, parent, c.name_key, c.id],
-                    |r| r.get(0),
-                )
-                .optional()?;
-            if let Some(id) = existing {
-                resolved.insert(c.id.clone(), id);
-                report.categories_kept_existing += 1;
-                continue;
-            }
-            report.categories_inserted += tx.execute(
-                "INSERT INTO category (id, parent_id, kind, name, name_key, seed_key, sort_order, hlc, hlc_device)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
-                 ON CONFLICT (id) DO NOTHING",
-                params![
-                    c.id, parent, c.kind, c.name, c.name_key, c.seed_key, c.sort_order, seed.hlc,
-                    seed.device
-                ],
-            )?;
-        }
-        for a in accounts {
-            report.accounts_inserted += tx.execute(
-                "INSERT INTO account (id, name, kind, currency_code, scope, visibility, sort_order, hlc, hlc_device)
-                 VALUES (?1, ?2, ?3, ?4, 'household', 'shared_full', ?5, ?6, ?7)
-                 ON CONFLICT (id) DO NOTHING",
-                params![a.id, a.name, a.kind, a.currency_code, a.sort_order, seed.hlc, seed.device],
-            )?;
-        }
-        tx.commit()?;
-        Ok(report)
+        self.write(|w| w.seed_defaults(categories, accounts))
     }
 
     /// Every category row, live and deleted, for the tree rules.
     pub fn category_rows(&self) -> Result<Vec<CategoryRow>> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT id, parent_id, kind, deleted FROM category ORDER BY id")?;
+        let mut stmt = self.conn.prepare(
+            "SELECT id, parent_id, kind, name, icon, is_archived, sort_order, deleted \
+                 FROM category ORDER BY id",
+        )?;
         let rows = stmt
             .query_map([], |r| {
                 Ok(CategoryRow {
                     id: r.get(0)?,
                     parent_id: r.get(1)?,
                     kind: r.get(2)?,
-                    deleted: r.get::<_, i64>(3)? == 1,
+                    name: r.get(3)?,
+                    icon: r.get(4)?,
+                    is_archived: r.get(5)?,
+                    sort_order: r.get(6)?,
+                    deleted: r.get(7)?,
                 })
             })?
             .collect::<std::result::Result<_, _>>()?;
@@ -309,6 +249,60 @@ impl Store {
         })?;
         tx.commit()?;
         Ok(())
+    }
+}
+
+impl Write<'_> {
+    /// Inserts the default categories and accounts. Idempotent: a row whose id exists, live
+    /// or deleted, is left alone, so deleted seed rows are never resurrected (ADR-0008). Seeds are never logged.
+    pub fn seed_defaults(
+        &self,
+        categories: &[SeedCategory],
+        accounts: &[SeedAccount],
+    ) -> Result<SeedReport> {
+        let seed = Stamp::seed();
+        let tx = self.tx();
+        let mut report = SeedReport::default();
+        // Seed id → id actually used (differs when a user category already holds the name).
+        let mut resolved: std::collections::HashMap<String, String> = Default::default();
+        for c in categories {
+            let parent = c
+                .parent_id
+                .as_ref()
+                .map(|p| resolved.get(p).cloned().unwrap_or_else(|| p.clone()));
+            let existing: Option<String> = tx
+                .query_row(
+                    "SELECT id FROM category
+                     WHERE deleted = 0 AND kind = ?1 AND ifnull(parent_id, '') = ifnull(?2, '')
+                       AND name_key = ?3 AND id <> ?4",
+                    params![c.kind, parent, c.name_key, c.id],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            if let Some(id) = existing {
+                resolved.insert(c.id.clone(), id);
+                report.categories_kept_existing += 1;
+                continue;
+            }
+            report.categories_inserted += tx.execute(
+                "INSERT INTO category (id, parent_id, kind, name, name_key, seed_key, sort_order, hlc, hlc_device)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                 ON CONFLICT (id) DO NOTHING",
+                params![
+                    c.id, parent, c.kind, c.name, c.name_key, c.seed_key, c.sort_order, seed.hlc,
+                    seed.device
+                ],
+            )?;
+        }
+        for a in accounts {
+            report.accounts_inserted += tx.execute(
+                "INSERT INTO account (id, name, kind, currency_code, scope, visibility, sort_order, hlc, hlc_device)
+                 VALUES (?1, ?2, ?3, ?4, 'household', 'shared_full', ?5, ?6, ?7)
+                 ON CONFLICT (id) DO NOTHING",
+                params![a.id, a.name, a.kind, a.currency_code, a.sort_order, seed.hlc, seed.device],
+            )?;
+        }
+        Ok(report)
     }
 }
 

@@ -10,8 +10,8 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 use crate::api::{
-    AccountDetailDto, AccountDto, AccountInput, AccountListQuery, AccountSummaryDto, BootstrapDto,
-    HouseholdDto, HouseholdInput, NewTxInput, Page, SettingsDto, TxDetailDto, TxQuery, TxRowDto,
+    AccountInput, AccountListQuery, CategoryTreeQuery, HouseholdInput, NewTxInput, Page,
+    TxDetailDto, TxQuery, TxRowDto,
 };
 use crate::{ApiError, App, ErrorCode};
 
@@ -27,6 +27,7 @@ pub const COMMANDS: &[&str] = &[
     "account_create",
     "account_update",
     "account_archive",
+    "category_tree",
     "tx_create",
     "tx_get",
     "tx_list",
@@ -91,6 +92,10 @@ pub fn dispatch(app: &mut App, name: &str, args: Value) -> Result<Value, ApiErro
             let a: Id = from_args(args)?;
             to_value(app.account_archive(a.id)?)
         }
+        "category_tree" => {
+            let a: Query<CategoryTreeQuery> = from_args(args)?;
+            to_value(app.category_tree(a.query)?)
+        }
         "tx_create" => {
             let a: Input<NewTxInput> = from_args(args)?;
             to_value(app.tx_create(a.input)?)
@@ -125,38 +130,8 @@ pub fn dispatch(app: &mut App, name: &str, args: Value) -> Result<Value, ApiErro
 /// M1 commands whose slice has not landed yet (design Q4, Q12). Each returns
 /// `NOT_IMPLEMENTED`; the slice that builds it replaces the body (and may move the method
 /// next to the rest of `App`), keeping the signature the shells and bindings rely on.
+/// Household and account commands live in `household.rs` / `accounts.rs` (S4).
 impl App {
-    pub fn bootstrap(&self) -> Result<BootstrapDto, ApiError> {
-        Err(ApiError::not_implemented("app_bootstrap"))
-    }
-    pub fn household_create(&mut self, _input: HouseholdInput) -> Result<HouseholdDto, ApiError> {
-        Err(ApiError::not_implemented("household_create"))
-    }
-    pub fn settings_get(&self) -> Result<SettingsDto, ApiError> {
-        Err(ApiError::not_implemented("settings_get"))
-    }
-    pub fn account_list(
-        &self,
-        _query: AccountListQuery,
-    ) -> Result<Vec<AccountSummaryDto>, ApiError> {
-        Err(ApiError::not_implemented("account_list"))
-    }
-    pub fn account_get(&self, _id: String) -> Result<AccountDetailDto, ApiError> {
-        Err(ApiError::not_implemented("account_get"))
-    }
-    pub fn account_create(&mut self, _input: AccountInput) -> Result<AccountDto, ApiError> {
-        Err(ApiError::not_implemented("account_create"))
-    }
-    pub fn account_update(
-        &mut self,
-        _id: String,
-        _input: AccountInput,
-    ) -> Result<AccountDto, ApiError> {
-        Err(ApiError::not_implemented("account_update"))
-    }
-    pub fn account_archive(&mut self, _id: String) -> Result<AccountDto, ApiError> {
-        Err(ApiError::not_implemented("account_archive"))
-    }
     pub fn tx_create(&mut self, _input: NewTxInput) -> Result<TxDetailDto, ApiError> {
         Err(ApiError::not_implemented("tx_create"))
     }
@@ -250,7 +225,7 @@ mod tests {
         }
     }
 
-    /// Valid documented arguments for every M1 stub (the shapes in bindings.ts).
+    /// Valid documented arguments for every M1 command (the shapes in bindings.ts).
     fn m1_stub_calls() -> Vec<(&'static str, Value)> {
         let money = json!({ "amount": "27.990", "currency": "CLP" });
         let expense = json!({
@@ -273,6 +248,7 @@ mod tests {
             ("account_create", json!({ "input": account })),
             ("account_update", json!({ "id": "a", "input": account })),
             ("account_archive", json!({ "id": "a" })),
+            ("category_tree", json!({ "query": { "kind": "expense" } })),
             ("tx_create", json!({ "input": expense })),
             ("tx_get", json!({ "id": "t" })),
             (
@@ -296,9 +272,12 @@ mod tests {
     }
 
     #[test]
-    fn m1_commands_with_valid_args_are_not_implemented_yet() {
+    fn transaction_commands_with_valid_args_are_not_implemented_yet() {
         let mut app = app();
-        for (name, args) in m1_stub_calls() {
+        for (name, args) in m1_stub_calls()
+            .into_iter()
+            .filter(|(n, _)| n.starts_with("tx_"))
+        {
             let e = dispatch(&mut app, name, args).unwrap_err();
             assert_eq!(e.code, ErrorCode::NotImplemented, "{name}: {e}");
             assert!(e.message.contains(name), "{name}: {}", e.message);
@@ -342,6 +321,8 @@ mod tests {
             .register::<AccountDetailDto>()
             .register::<AccountInput>()
             .register::<AccountDto>()
+            .register::<CategoryTreeQuery>()
+            .register::<CategoryNodeDto>()
             .register::<NewTxInput>()
             .register::<TxQuery>()
             .register::<Page<TxRowDto>>()
