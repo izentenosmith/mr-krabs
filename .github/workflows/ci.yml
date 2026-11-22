@@ -47,7 +47,9 @@ jobs:
         run: |
           db="$(mktemp)"
           for f in crates/mrk-store/migrations/*.sql; do sqlite3 -bail "$db" < "$f"; done
-          test -z "$(sqlite3 "$db" 'PRAGMA foreign_key_check;')"
+          # Assign first: a failing sqlite3 then fails the step under -e (inside `test` it can't).
+          fk="$(sqlite3 "$db" 'PRAGMA foreign_key_check;')"
+          test -z "$fk"
           test "$(sqlite3 "$db" 'PRAGMA integrity_check;')" = ok
       - name: Secret scan
         uses: gitleaks/gitleaks-action@v2
