@@ -1,11 +1,13 @@
-import { useForm } from "react-hook-form";
+import { useForm, type FieldErrors } from "react-hook-form";
 import { useTranslation } from "react-i18next";
-import type { AccountDto, NewTxInput, TxDetailDto } from "@mr-krabs/api-client";
+import { CircleAlert } from "lucide-react";
+import { ApiError, type AccountDto, type NewTxInput, type TxDetailDto } from "@mr-krabs/api-client";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 import type { CategoryOptions } from "./TransactionsPage";
+import { serverFieldErrors, type TxField } from "./txErrors";
 
 type TxType = NewTxInput["type"];
 const TYPES: TxType[] = ["expense", "income", "transfer"];
@@ -71,30 +73,63 @@ function toInput(v: FormValues, accounts: AccountDto[]): NewTxInput {
 const control =
   "border-input h-9 w-full rounded-md border bg-transparent px-3 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50";
 
-function Field({ id, label, children }: { id: string; label: string; children: React.ReactNode }) {
+function Field({
+  id,
+  label,
+  error,
+  children,
+}: {
+  id: string;
+  label: string;
+  error?: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="grid gap-1.5">
       <label htmlFor={id} className="text-sm font-medium">
         {label}
       </label>
       {children}
+      {error && (
+        <p id={`${id}-error`} className="text-destructive flex items-center gap-1 text-xs">
+          <CircleAlert aria-hidden className="size-3.5" />
+          {error}
+        </p>
+      )}
     </div>
   );
 }
 
+/** `aria-*` that ties a control to its error line (MASTER §7.1). */
+function invalid(id: string, error: string | undefined) {
+  return error ? { "aria-invalid": true, "aria-describedby": `${id}-error` } : {};
+}
+
 /** Add/edit dialog for expense, income and transfer. Presentational: input out, errors in. */
 export function TxDialog({ open, onOpenChange, mode, accounts, categories, onSubmit }: TxDialogProps) {
-  const { t } = useTranslation();
-  const { register, handleSubmit, watch, formState } = useForm<FormValues>({
+  const { t, i18n } = useTranslation();
+  const { register, handleSubmit, watch, setError, formState } = useForm<FormValues>({
     defaultValues: defaults(),
   });
+  // Messages are i18n keys (ours or the server's); an unknown key gets the generic text.
+  const message = (errors: FieldErrors<FormValues>, field: TxField) => {
+    const key = errors[field]?.message;
+    if (!key) return undefined;
+    return i18n.exists(key) ? t(key as never) : t("errors.field.invalid");
+  };
+  const err = (field: TxField) => message(formState.errors, field);
   const type = watch("type");
   const accountId = watch("accountId");
   const currency = accounts.find((a) => a.id === accountId)?.currency;
   const categoryOptions = type === "income" ? categories.income : categories.expense;
 
   const submit = handleSubmit(async (v) => {
-    await onSubmit(toInput(v, accounts));
+    try {
+      await onSubmit(toInput(v, accounts));
+    } catch (raw) {
+      const error = ApiError.from(raw);
+      for (const [field, key] of serverFieldErrors(error)) setError(field, { message: key });
+    }
   });
 
   return (
@@ -117,8 +152,17 @@ export function TxDialog({ open, onOpenChange, mode, accounts, categories, onSub
             ))}
           </fieldset>
 
-          <Field id="tx-account" label={t(type === "transfer" ? "tx.form.from" : "tx.form.account")}>
-            <select id="tx-account" {...register("accountId")} className={control}>
+          <Field
+            id="tx-account"
+            label={t(type === "transfer" ? "tx.form.from" : "tx.form.account")}
+            error={err("accountId")}
+          >
+            <select
+              id="tx-account"
+              {...register("accountId")}
+              {...invalid("tx-account", err("accountId"))}
+              className={control}
+            >
               <option value="">{t("tx.form.choose")}</option>
               {accounts.map((a) => (
                 <option key={a.id} value={a.id}>
@@ -129,8 +173,13 @@ export function TxDialog({ open, onOpenChange, mode, accounts, categories, onSub
           </Field>
 
           {type === "transfer" ? (
-            <Field id="tx-to" label={t("tx.form.to")}>
-              <select id="tx-to" {...register("toAccountId")} className={control}>
+            <Field id="tx-to" label={t("tx.form.to")} error={err("toAccountId")}>
+              <select
+                id="tx-to"
+                {...register("toAccountId")}
+                {...invalid("tx-to", err("toAccountId"))}
+                className={control}
+              >
                 <option value="">{t("tx.form.choose")}</option>
                 {accounts.map((a) => (
                   <option key={a.id} value={a.id}>
@@ -140,8 +189,13 @@ export function TxDialog({ open, onOpenChange, mode, accounts, categories, onSub
               </select>
             </Field>
           ) : (
-            <Field id="tx-category" label={t("tx.form.category")}>
-              <select id="tx-category" {...register("categoryId")} className={control}>
+            <Field id="tx-category" label={t("tx.form.category")} error={err("categoryId")}>
+              <select
+                id="tx-category"
+                {...register("categoryId")}
+                {...invalid("tx-category", err("categoryId"))}
+                className={control}
+              >
                 <option value="">{t("tx.form.choose")}</option>
                 {categoryOptions.map((c) => (
                   <option key={c.id} value={c.id}>
@@ -153,13 +207,14 @@ export function TxDialog({ open, onOpenChange, mode, accounts, categories, onSub
           )}
 
           <div className="grid grid-cols-2 gap-4">
-            <Field id="tx-amount" label={t("tx.form.amount")}>
+            <Field id="tx-amount" label={t("tx.form.amount")} error={err("amount")}>
               <div className="relative">
                 <input
                   id="tx-amount"
                   inputMode="decimal"
                   autoComplete="off"
                   {...register("amount")}
+                  {...invalid("tx-amount", err("amount"))}
                   className={`${control} pr-12 text-right tabular-nums`}
                 />
                 {currency && (
@@ -169,16 +224,32 @@ export function TxDialog({ open, onOpenChange, mode, accounts, categories, onSub
                 )}
               </div>
             </Field>
-            <Field id="tx-date" label={t("tx.form.date")}>
-              <input id="tx-date" type="date" {...register("date")} className={control} />
+            <Field id="tx-date" label={t("tx.form.date")} error={err("date")}>
+              <input
+                id="tx-date"
+                type="date"
+                {...register("date")}
+                {...invalid("tx-date", err("date"))}
+                className={control}
+              />
             </Field>
           </div>
 
-          <Field id="tx-description" label={t("tx.form.description")}>
-            <input id="tx-description" {...register("description")} className={control} />
+          <Field id="tx-description" label={t("tx.form.description")} error={err("description")}>
+            <input
+              id="tx-description"
+              {...register("description")}
+              {...invalid("tx-description", err("description"))}
+              className={control}
+            />
           </Field>
-          <Field id="tx-memo" label={t("tx.form.memo")}>
-            <input id="tx-memo" {...register("memo")} className={control} />
+          <Field id="tx-memo" label={t("tx.form.memo")} error={err("memo")}>
+            <input
+              id="tx-memo"
+              {...register("memo")}
+              {...invalid("tx-memo", err("memo"))}
+              className={control}
+            />
           </Field>
 
           <DialogFooter>
