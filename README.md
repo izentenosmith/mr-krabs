@@ -6,6 +6,22 @@
 
 Mr Krabs tracks **personal** and **household** finances for a two-person household (you and your partner), runs **100% on your own devices**, syncs **peer-to-peer over your home LAN**, and costs **$0 in infrastructure** — no cloud, no SaaS, no accounts.
 
+## What is Mr Krabs
+
+Mr Krabs is a desktop app for managing your **own** and your **household's** money: accounts, transactions, budgets, debts and reports, in one place. It replaces the shared spreadsheet, runs entirely on your own computers, and keeps the two of you in sync without any server in between.
+
+### Product non-negotiables
+
+1. **Lightning fast.** It has to beat the spreadsheet: opens in under 2 seconds, scrolls 10,000 transactions without lag, and builds a monthly report in a blink ([NFR-05](docs/01-requirements.md)).
+2. **Your data is yours.** It lives on your devices and never goes to the internet.
+3. **100% local.** Personal and household finances, managed on your own machines; the two devices sync directly over your home network.
+4. **AI is optional and never intrusive.** Off by default and never required: everything works without it. If you turn it on, it only helps where you ask (importing bank statements), and a cloud provider is used only if you add your own key.
+5. **Easy to install.** One app, no accounts, no servers to set up.
+6. **Easy to port.** Everything is in a single local database file you can back up and take to a new machine.
+7. **$0, forever.** You run it yourself, so there is no subscription, no hosting and no cloud bill.
+
+## Stack
+
 | | |
 |---|---|
 | Platform | macOS first (Apple Silicon + Intel), structured for Windows/Linux portability |
@@ -67,7 +83,7 @@ Desktop app (macOS, native): `pnpm install && pnpm tauri dev`. Details in [docs/
 | — | [ADRs](docs/adr/) | Architecture decision records |
 | — | [Glossary](docs/glossary.md) | Terms (EN/ES) |
 
-## Non-negotiables
+## Engineering non-negotiables
 
 1. **No floats for money.** Integer minor units (`i64`) + ISO currency, or `rust_decimal` for rates.
 2. **No logic in SQL.** No triggers, stored procedures, side-effecting UDFs, or computed views.
