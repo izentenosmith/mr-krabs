@@ -1,13 +1,13 @@
 import { useForm, type FieldErrors } from "react-hook-form";
 import { useTranslation } from "react-i18next";
-import { CircleAlert } from "lucide-react";
+import { CircleAlert, Hourglass } from "lucide-react";
 import { ApiError, type AccountDto, type NewTxInput, type TxDetailDto } from "@mr-krabs/api-client";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 import type { CategoryOptions } from "./TransactionsPage";
-import { serverFieldErrors, type TxField } from "./txErrors";
+import { errorCopyKey, serverFieldErrors, type TxField } from "./txErrors";
 
 type TxType = NewTxInput["type"];
 const TYPES: TxType[] = ["expense", "income", "transfer"];
@@ -100,6 +100,25 @@ function Field({
   );
 }
 
+/** The form-level line above the footer (MASTER §7.1, §7.2). */
+function FormMessage({ text, notAvailable }: { text?: string; notAvailable: boolean }) {
+  if (!text) return null;
+  if (notAvailable) {
+    return (
+      <p role="status" className="text-muted-foreground flex items-center gap-2 text-sm">
+        <Hourglass aria-hidden className="size-4" />
+        {text}
+      </p>
+    );
+  }
+  return (
+    <p role="alert" className="text-destructive flex items-center gap-2 text-sm">
+      <CircleAlert aria-hidden className="size-4" />
+      {text}
+    </p>
+  );
+}
+
 /** `aria-*` that ties a control to its error line (MASTER §7.1). */
 function invalid(id: string, error: string | undefined) {
   return error ? { "aria-invalid": true, "aria-describedby": `${id}-error` } : {};
@@ -128,7 +147,9 @@ export function TxDialog({ open, onOpenChange, mode, accounts, categories, onSub
       await onSubmit(toInput(v, accounts));
     } catch (raw) {
       const error = ApiError.from(raw);
-      for (const [field, key] of serverFieldErrors(error)) setError(field, { message: key });
+      const fields = serverFieldErrors(error);
+      for (const [field, key] of fields) setError(field, { message: key });
+      if (fields.length === 0) setError("root", { type: error.code, message: errorCopyKey(error.code) });
     }
   });
 
@@ -251,6 +272,11 @@ export function TxDialog({ open, onOpenChange, mode, accounts, categories, onSub
               className={control}
             />
           </Field>
+
+          <FormMessage
+            notAvailable={formState.errors.root?.type === "NOT_IMPLEMENTED"}
+            text={formState.errors.root?.message && t(formState.errors.root.message as never)}
+          />
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

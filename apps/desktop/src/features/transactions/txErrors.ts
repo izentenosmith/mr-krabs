@@ -30,3 +30,20 @@ export function serverFieldErrors(error: ApiError): Array<[TxField, string]> {
     return field && key ? [[field, key] as [TxField, string]] : [];
   });
 }
+
+type CopiedCode = "VALIDATION" | "NOT_FOUND" | "CURRENCY_MISMATCH" | "UNBALANCED_ENTRY" | "CONFLICT" | "INTERNAL" | "TRANSPORT";
+const COPIED = new Set<string>([
+  "VALIDATION",
+  "NOT_FOUND",
+  "CURRENCY_MISMATCH",
+  "UNBALANCED_ENTRY",
+  "CONFLICT",
+  "INTERNAL",
+  "TRANSPORT",
+]);
+
+/** i18n key for what the user is told about an error code (MASTER §9: never the raw code). */
+export function errorCopyKey(code: ApiError["code"]) {
+  if (code === "NOT_IMPLEMENTED") return "notAvailable.body" as const;
+  return `errors.code.${COPIED.has(code) ? (code as CopiedCode) : "INTERNAL"}` as const;
+}
