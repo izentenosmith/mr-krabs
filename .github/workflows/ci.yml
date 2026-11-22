@@ -42,8 +42,13 @@ jobs:
       - name: No SQL logic (ADR-0002)
         run: ./tools/check-no-sql-logic.sh
       - name: Schema applies cleanly
+        # Migrations build on each other: apply them in order to one database, each on a fresh
+        # connection (foreign keys off, as Store::migrate runs them), then check the result.
         run: |
-          for f in crates/mrk-store/migrations/*.sql; do sqlite3 :memory: < "$f"; done
+          db="$(mktemp)"
+          for f in crates/mrk-store/migrations/*.sql; do sqlite3 -bail "$db" < "$f"; done
+          test -z "$(sqlite3 "$db" 'PRAGMA foreign_key_check;')"
+          test "$(sqlite3 "$db" 'PRAGMA integrity_check;')" = ok
       - name: Secret scan
         uses: gitleaks/gitleaks-action@v2
         env:

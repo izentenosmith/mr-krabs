@@ -5,12 +5,16 @@ use std::fmt;
 
 use mrk_money::{CurrencyCode, Money, MoneyError};
 
-/// What a posting points at: a real account (asset/liability) or a category
-/// (nominal income/expense account).
+/// What a posting points at: a real account (asset/liability), a category (nominal
+/// income/expense account), or the FX-trading position of the posting's own currency.
+///
+/// An FX leg has no target row: its currency *is* the target. An `fx_exchange` entry
+/// balances per currency through a pair of FX legs (docs/03, schema v2 `posting.leg = 'fx'`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Leg {
     Account(String),
     Category(String),
+    FxTrading,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -30,6 +34,14 @@ impl Posting {
     pub fn category(id: &str, amount: Money) -> Self {
         Self {
             leg: Leg::Category(id.to_owned()),
+            amount,
+        }
+    }
+
+    /// FX-trading leg in `amount`'s currency.
+    pub fn fx(amount: Money) -> Self {
+        Self {
+            leg: Leg::FxTrading,
             amount,
         }
     }
@@ -107,6 +119,8 @@ pub enum EntryKind {
 
 /// Classifies a (balanced) entry by its category legs.
 /// Positive category amount = expense (debit), negative = income (credit).
+/// Account and FX-trading legs never make an entry income or expense, so a currency
+/// exchange between own accounts is a transfer.
 pub fn classify(postings: &[Posting]) -> EntryKind {
     let (mut debit, mut credit) = (false, false);
     for p in postings {
@@ -187,11 +201,13 @@ mod tests {
         // CLP -> USD exchange through FX legs: each currency balances on its own.
         let entry = [
             Posting::account("checking", clp(-23_750)),
-            Posting::category("fx", clp(23_750)),
-            Posting::category("fx", usd(-2_500)),
+            Posting::fx(clp(23_750)),
+            Posting::fx(usd(-2_500)),
             Posting::account("card-usd", usd(2_500)),
         ];
         assert_eq!(validate_balanced(&entry), Ok(()));
+        // FX legs are neither income nor expense: paying a USD card from CLP is a transfer.
+        assert_eq!(classify(&entry), EntryKind::Transfer);
 
         let broken = [
             Posting::account("checking", clp(-23_750)),
@@ -211,5 +227,45 @@ mod tests {
         );
         let zero = [Posting::account("a", clp(0)), Posting::account("b", clp(0))];
         assert_eq!(validate_balanced(&zero), Err(DomainError::ZeroAmount));
+    }
+
+    #[test]
+    fn fx_legs_do_not_change_classification_of_a_purchase() {
+        // A USD software purchase paid from a CLP account through an FX pair is an expense.
+        let entry = [
+            Posting::account("checking", clp(-23_750)),
+            Posting::fx(clp(23_750)),
+            Posting::fx(usd(-2_500)),
+            Posting::category("software", usd(2_500)),
+        ];
+        assert_eq!(validate_balanced(&entry), Ok(()));
+        assert_eq!(classify(&entry), EntryKind::Expense);
+    }
+
+    mod props {
+        use super::*;
+        use proptest::prelude::*;
+
+        fn leg() -> impl Strategy<Value = Posting> {
+            (0u8..2, -1_000_000i64..1_000_000)
+                .prop_filter("non-zero", |(_, a)| *a != 0)
+                .prop_map(|(k, a)| match k {
+                    0 => Posting::account("a", clp(a)),
+                    _ => Posting::category("c", clp(a)),
+                })
+        }
+
+        proptest! {
+            /// Adding FX-trading legs never changes how an entry is classified.
+            #[test]
+            fn classification_ignores_fx_legs(
+                legs in proptest::collection::vec(leg(), 1..6),
+                fx in proptest::collection::vec(-1_000_000i64..1_000_000, 0..4),
+            ) {
+                let mut with_fx = legs.clone();
+                with_fx.extend(fx.into_iter().filter(|a| *a != 0).map(|a| Posting::fx(usd(a))));
+                prop_assert_eq!(classify(&legs), classify(&with_fx));
+            }
+        }
     }
 }
