@@ -1,4 +1,4 @@
-import { useForm, type FieldErrors } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useTranslation } from "react-i18next";
@@ -165,6 +165,17 @@ function invalid(id: string, error: string | undefined) {
   return error ? { "aria-invalid": true, "aria-describedby": `${id}-error` } : {};
 }
 
+const idOf = (field: TxField) => `tx-${field}`;
+
+/** `<option>`s for the household's accounts. */
+export function AccountOptions({ accounts }: { accounts: AccountDto[] }) {
+  return accounts.map((a) => (
+    <option key={a.id} value={a.id}>
+      {a.name}
+    </option>
+  ));
+}
+
 /** Add/edit dialog for expense, income and transfer. Presentational: input out, errors in. */
 export function TxDialog({
   open,
@@ -182,12 +193,17 @@ export function TxDialog({
     defaultValues: defaults(initial),
   });
   // Messages are i18n keys (ours or the server's); an unknown key gets the generic text.
-  const message = (errors: FieldErrors<FormValues>, field: TxField) => {
-    const key = errors[field]?.message;
+  const err = (field: TxField) => {
+    const key = formState.errors[field]?.message;
     if (!key) return undefined;
     return i18n.exists(key) ? t(key as never) : t("errors.field.invalid");
   };
-  const err = (field: TxField) => message(formState.errors, field);
+  /** Everything a control needs for `field`: id, form binding and error wiring. */
+  const bind = (field: TxField) => ({
+    id: idOf(field),
+    ...register(field),
+    ...invalid(idOf(field), err(field)),
+  });
   const type = watch("type");
   const accountId = watch("accountId");
   const currency = accounts.find((a) => a.id === accountId)?.currency;
@@ -225,49 +241,26 @@ export function TxDialog({
           </fieldset>
 
           <Field
-            id="tx-account"
+            id={idOf("accountId")}
             label={t(type === "transfer" ? "tx.form.from" : "tx.form.account")}
             error={err("accountId")}
           >
-            <select
-              id="tx-account"
-              {...register("accountId")}
-              {...invalid("tx-account", err("accountId"))}
-              className={control}
-            >
+            <select {...bind("accountId")} className={control}>
               <option value="">{t("tx.form.choose")}</option>
-              {accounts.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                </option>
-              ))}
+              <AccountOptions accounts={accounts} />
             </select>
           </Field>
 
           {type === "transfer" ? (
-            <Field id="tx-to" label={t("tx.form.to")} error={err("toAccountId")}>
-              <select
-                id="tx-to"
-                {...register("toAccountId")}
-                {...invalid("tx-to", err("toAccountId"))}
-                className={control}
-              >
+            <Field id={idOf("toAccountId")} label={t("tx.form.to")} error={err("toAccountId")}>
+              <select {...bind("toAccountId")} className={control}>
                 <option value="">{t("tx.form.choose")}</option>
-                {accounts.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name}
-                  </option>
-                ))}
+                <AccountOptions accounts={accounts} />
               </select>
             </Field>
           ) : (
-            <Field id="tx-category" label={t("tx.form.category")} error={err("categoryId")}>
-              <select
-                id="tx-category"
-                {...register("categoryId")}
-                {...invalid("tx-category", err("categoryId"))}
-                className={control}
-              >
+            <Field id={idOf("categoryId")} label={t("tx.form.category")} error={err("categoryId")}>
+              <select {...bind("categoryId")} className={control}>
                 <option value="">{t("tx.form.choose")}</option>
                 {categoryOptions.map((c) => (
                   <option key={c.id} value={c.id}>
@@ -279,14 +272,12 @@ export function TxDialog({
           )}
 
           <div className="grid grid-cols-2 gap-4">
-            <Field id="tx-amount" label={t("tx.form.amount")} error={err("amount")}>
+            <Field id={idOf("amount")} label={t("tx.form.amount")} error={err("amount")}>
               <div className="relative">
                 <input
-                  id="tx-amount"
                   inputMode="decimal"
                   autoComplete="off"
-                  {...register("amount")}
-                  {...invalid("tx-amount", err("amount"))}
+                  {...bind("amount")}
                   className={`${control} pr-12 text-right tabular-nums`}
                 />
                 {currency && (
@@ -296,32 +287,20 @@ export function TxDialog({
                 )}
               </div>
             </Field>
-            <Field id="tx-date" label={t("tx.form.date")} error={err("date")}>
-              <input
-                id="tx-date"
-                type="date"
-                {...register("date")}
-                {...invalid("tx-date", err("date"))}
-                className={control}
-              />
+            <Field id={idOf("date")} label={t("tx.form.date")} error={err("date")}>
+              <input type="date" {...bind("date")} className={control} />
             </Field>
           </div>
 
-          <Field id="tx-description" label={t("tx.form.description")} error={err("description")}>
-            <input
-              id="tx-description"
-              {...register("description")}
-              {...invalid("tx-description", err("description"))}
-              className={control}
-            />
+          <Field
+            id={idOf("description")}
+            label={t("tx.form.description")}
+            error={err("description")}
+          >
+            <input {...bind("description")} className={control} />
           </Field>
-          <Field id="tx-memo" label={t("tx.form.memo")} error={err("memo")}>
-            <input
-              id="tx-memo"
-              {...register("memo")}
-              {...invalid("tx-memo", err("memo"))}
-              className={control}
-            />
+          <Field id={idOf("memo")} label={t("tx.form.memo")} error={err("memo")}>
+            <input {...bind("memo")} className={control} />
           </Field>
 
           <FormMessage

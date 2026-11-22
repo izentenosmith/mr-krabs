@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { StateBlock } from "./StateBlock";
 import { TransactionsTable } from "./TransactionsTable";
 import { errorCopyKey } from "./txErrors";
-import { TxDialog, type CategoryOptions } from "./TxDialog";
+import { AccountOptions, TxDialog, type CategoryOptions } from "./TxDialog";
 
 export type { CategoryOption, CategoryOptions } from "./TxDialog";
 
@@ -129,11 +129,7 @@ export function TransactionsPage({
           className="border-input focus-visible:ring-ring/50 ml-auto h-9 rounded-md border bg-transparent px-3 text-sm outline-none focus-visible:ring-[3px]"
         >
           <option value="">{t("tx.allAccounts")}</option>
-          {accountOptions.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.name}
-            </option>
-          ))}
+          <AccountOptions accounts={accountOptions} />
         </select>
         <Button onClick={() => setDialog({ mode: "create" })} disabled={!!notAvailable}>
           <Plus aria-hidden />
