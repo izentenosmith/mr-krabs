@@ -8,12 +8,14 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import type { CategoryOptions } from "./TransactionsPage";
 
 type TxType = NewTxInput["type"];
-const TYPES: TxType[] = ["expense", "income"];
+const TYPES: TxType[] = ["expense", "income", "transfer"];
 
 interface FormValues {
   type: TxType;
   accountId: string;
   categoryId: string;
+  /** Transfer only; for a transfer `accountId` is the source account. */
+  toAccountId: string;
   amount: string;
   date: string;
   description: string;
@@ -42,6 +44,7 @@ function defaults(): FormValues {
     type: "expense",
     accountId: "",
     categoryId: "",
+    toAccountId: "",
     amount: "",
     date: today(),
     description: "",
@@ -57,15 +60,12 @@ const optional = (s: string) => (s.trim() === "" ? null : s);
  */
 function toInput(v: FormValues, accounts: AccountDto[]): NewTxInput {
   const currency = accounts.find((a) => a.id === v.accountId)?.currency ?? "";
-  return {
-    type: v.type as "expense" | "income",
-    accountId: v.accountId,
-    categoryId: v.categoryId,
-    amount: { amount: v.amount, currency },
-    date: v.date,
-    description: optional(v.description),
-    memo: optional(v.memo),
-  };
+  const amount = { amount: v.amount, currency };
+  const text = { date: v.date, description: optional(v.description), memo: optional(v.memo) };
+  if (v.type === "transfer") {
+    return { type: "transfer", fromAccountId: v.accountId, toAccountId: v.toAccountId, amount, ...text };
+  }
+  return { type: v.type, accountId: v.accountId, categoryId: v.categoryId, amount, ...text };
 }
 
 const control =
@@ -117,7 +117,7 @@ export function TxDialog({ open, onOpenChange, mode, accounts, categories, onSub
             ))}
           </fieldset>
 
-          <Field id="tx-account" label={t("tx.form.account")}>
+          <Field id="tx-account" label={t(type === "transfer" ? "tx.form.from" : "tx.form.account")}>
             <select id="tx-account" {...register("accountId")} className={control}>
               <option value="">{t("tx.form.choose")}</option>
               {accounts.map((a) => (
@@ -128,16 +128,29 @@ export function TxDialog({ open, onOpenChange, mode, accounts, categories, onSub
             </select>
           </Field>
 
-          <Field id="tx-category" label={t("tx.form.category")}>
-            <select id="tx-category" {...register("categoryId")} className={control}>
-              <option value="">{t("tx.form.choose")}</option>
-              {categoryOptions.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </Field>
+          {type === "transfer" ? (
+            <Field id="tx-to" label={t("tx.form.to")}>
+              <select id="tx-to" {...register("toAccountId")} className={control}>
+                <option value="">{t("tx.form.choose")}</option>
+                {accounts.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          ) : (
+            <Field id="tx-category" label={t("tx.form.category")}>
+              <select id="tx-category" {...register("categoryId")} className={control}>
+                <option value="">{t("tx.form.choose")}</option>
+                {categoryOptions.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
 
           <div className="grid grid-cols-2 gap-4">
             <Field id="tx-amount" label={t("tx.form.amount")}>
