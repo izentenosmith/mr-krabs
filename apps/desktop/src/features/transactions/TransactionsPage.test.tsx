@@ -236,3 +236,26 @@ describe("TransactionsPage accounts", () => {
     expect(await screen.findByRole("option", { name: "Corriente Prueba" })).toBeInTheDocument();
   });
 });
+
+describe("TransactionsPage paging", () => {
+  afterEach(() => {
+    Object.defineProperty(window, "scrollY", { value: 0, configurable: true });
+  });
+
+  it("a full first page loads the next one only after scrolling near its end (F6, F7)", async () => {
+    const pageOf = (prefix: string) =>
+      Array.from({ length: 100 }, (_, i) => ({ ...row, id: `${prefix}${i}`, description: `Mov ${prefix}${i}` }));
+    api.tx.list.mockImplementation(async (q: { cursor?: string | null }) =>
+      q.cursor ? { items: pageOf("b"), nextCursor: null } : { items: pageOf("a"), nextCursor: "next" },
+    );
+    renderPage();
+    await screen.findByRole("row", { name: /Mov a0\b/ });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(api.tx.list).toHaveBeenCalledTimes(1);
+
+    Object.defineProperty(window, "scrollY", { value: 100 * 36, configurable: true });
+    fireEvent.scroll(window);
+    await waitFor(() => expect(api.tx.list).toHaveBeenCalledTimes(2));
+    expect(api.tx.list).toHaveBeenLastCalledWith(expect.objectContaining({ cursor: "next" }));
+  });
+});

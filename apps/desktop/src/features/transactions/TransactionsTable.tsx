@@ -1,7 +1,7 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { createColumnHelper, tableFeatures, useTable } from "@tanstack/react-table";
-import { observeElementRect, useVirtualizer, type Rect } from "@tanstack/react-virtual";
+import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import { ArrowLeftRight, Check, CircleCheck, Clock } from "lucide-react";
 import type { LegStatus, TxKind, TxRowDto } from "@mr-krabs/api-client";
 
@@ -16,13 +16,6 @@ export interface TransactionsTableProps {
 }
 
 const ROW_HEIGHT = 36; // MASTER §4: table rows 36px.
-// jsdom and the first paint have no layout yet; start from a plausible viewport so the
-// first window of rows renders before the scroll element is measured.
-const INITIAL_RECT: Rect = { width: 1024, height: 600 };
-
-/** Ignores 0×0 measurements (before layout, hidden, jsdom) so the initial window stays. */
-const observeRect: typeof observeElementRect = (instance, cb) =>
-  observeElementRect(instance, (rect) => cb(rect.height > 0 ? rect : INITIAL_RECT));
 
 const features = tableFeatures({});
 const column = createColumnHelper<typeof features, TxRowDto>();
@@ -122,14 +115,19 @@ export function TransactionsTable({
 }: TransactionsTableProps) {
   const table = useTable({ features, columns, data: rows, getRowId: (r) => r.id });
   const modelRows = table.getRowModel().rows;
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const virtualizer = useVirtualizer({
+  // The app shell scrolls the window (MASTER §5 layout, `min-h-screen`), so rows are
+  // virtualized against the window; the body's offset from the page top is the margin (F7).
+  const bodyRef = useRef<HTMLTableSectionElement>(null);
+  const [scrollMargin, setScrollMargin] = useState(0);
+  useLayoutEffect(() => {
+    const top = bodyRef.current?.getBoundingClientRect().top ?? 0;
+    setScrollMargin(top + window.scrollY);
+  }, []);
+  const virtualizer = useWindowVirtualizer({
     count: modelRows.length,
-    getScrollElement: () => scrollRef.current,
     estimateSize: () => ROW_HEIGHT,
-    initialRect: INITIAL_RECT,
-    observeElementRect: observeRect,
     overscan: 10,
+    scrollMargin,
   });
   const items = virtualizer.getVirtualItems();
   const lastIndex = items.at(-1)?.index ?? -1;
@@ -140,10 +138,7 @@ export function TransactionsTable({
   }, [hasMore, loadingMore, lastIndex, modelRows.length, onLoadMore]);
 
   return (
-    <div
-      ref={scrollRef}
-      className="bg-card min-h-0 flex-1 overflow-auto rounded-lg border"
-    >
+    <div className="bg-card rounded-lg border">
       <table className="w-full text-[13px]" aria-rowcount={modelRows.length + 1}>
         <thead className="bg-card sticky top-0 z-10 border-b">
           {table.getHeaderGroups().map((group) => (
@@ -162,7 +157,11 @@ export function TransactionsTable({
             </tr>
           ))}
         </thead>
-        <tbody className="relative block" style={{ height: virtualizer.getTotalSize() }}>
+        <tbody
+          ref={bodyRef}
+          className="relative block"
+          style={{ height: virtualizer.getTotalSize() }}
+        >
           {items.map((item) => {
             const row = modelRows[item.index];
             if (!row) return null;
@@ -186,7 +185,7 @@ export function TransactionsTable({
                   editable &&
                     "hover:bg-accent focus-visible:ring-ring/50 cursor-pointer outline-none focus-visible:ring-[3px]",
                 )}
-                style={{ transform: `translateY(${item.start}px)` }}
+                style={{ transform: `translateY(${item.start - scrollMargin}px)` }}
               >
                 {row.getAllCells().map((cell) => (
                   <td
