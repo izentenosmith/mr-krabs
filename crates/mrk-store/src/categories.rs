@@ -238,14 +238,22 @@ impl Store {
     /// arrive later (sync) can follow it (design D-18). Every touched row is logged.
     pub fn apply_category_merge(&mut self, m: &CategoryMergeWrite) -> Result<()> {
         let tx = self.conn.unchecked_transaction()?;
-        let set = |tx: &Transaction<'_>, table: &str, column: &str, id: &str, value: &dyn ToSql| {
-            self.track(tx, table, id, Visibility::Household, |tx| {
+        let set_as = |visibility,
+                      tx: &Transaction<'_>,
+                      table: &str,
+                      column: &str,
+                      id: &str,
+                      value: &dyn ToSql| {
+            self.track(tx, table, id, visibility, |tx| {
                 tx.execute(
                     &format!("UPDATE {table} SET {column} = ?2 WHERE id = ?1"),
                     params![id, value],
                 )?;
                 Ok(())
             })
+        };
+        let set = |tx: &Transaction<'_>, table: &str, column: &str, id: &str, value: &dyn ToSql| {
+            set_as(Visibility::Household, tx, table, column, id, value)
         };
         for child in &m.reparent {
             set(&tx, "category", "parent_id", child, &m.into)?;
@@ -273,13 +281,7 @@ impl Store {
             } else {
                 Visibility::Household
             };
-            self.track(&tx, "posting", &id, visibility, |tx| {
-                tx.execute(
-                    "UPDATE posting SET category_id = ?2 WHERE id = ?1",
-                    params![id, m.into],
-                )?;
-                Ok(())
-            })?;
+            set_as(visibility, &tx, "posting", "category_id", &id, &m.into)?;
         }
         for (table, column) in [
             ("payee", "default_category_id"),
