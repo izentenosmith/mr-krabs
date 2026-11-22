@@ -1964,6 +1964,7 @@ version = "0.1.0"
 dependencies = [
  "mrk-money",
  "proptest",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
