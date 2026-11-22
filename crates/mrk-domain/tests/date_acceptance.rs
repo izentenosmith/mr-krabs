@@ -13,13 +13,22 @@ fn rejected(date: &str) {
 }
 
 fn accepted(date: &str) {
-    assert_eq!(validate_civil_date(date), Ok(()), "{date} should be accepted");
+    assert_eq!(
+        validate_civil_date(date),
+        Ok(()),
+        "{date} should be accepted"
+    );
 }
 
 /// Test-side oracle: Gregorian month lengths, written independently of the crate.
 fn days_in(year: u32, month: u32) -> u32 {
     let leap = (year % 400 == 0) || (year % 4 == 0 && year % 100 != 0);
-    [31, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month as usize - 1]
+    match month {
+        2 if leap => 29,
+        2 => 28,
+        4 | 6 | 9 | 11 => 30,
+        _ => 31,
+    }
 }
 
 // AC1
@@ -27,8 +36,17 @@ fn days_in(year: u32, month: u32) -> u32 {
 fn ac1_real_date_is_ok_and_anything_else_is_invalid_date_with_the_input() {
     accepted("2026-11-22");
     for bad in [
-        "", "2026-11-2", "2026/11/22", "2026-11-22 ", " 2026-11-22", "26-11-22", "2026-1-022",
-        "2026-11-2x", "+026-11-22", "2026-02-30", "２０２６-11-22",
+        "",
+        "2026-11-2",
+        "2026/11/22",
+        "2026-11-22 ",
+        " 2026-11-22",
+        "26-11-22",
+        "2026-1-022",
+        "2026-11-2x",
+        "+026-11-22",
+        "2026-02-30",
+        "２０２６-11-22",
     ] {
         rejected(bad);
     }

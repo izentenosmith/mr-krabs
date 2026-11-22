@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use mrk_money::Money;
 
-use crate::date::is_civil_date;
+use crate::date::validate_civil_date;
 use crate::ledger::{DomainError, Leg, Posting};
 
 /// A posting row as the store reads it for balances.
@@ -24,9 +24,7 @@ pub fn account_balances(
     rows: &[BalanceRow],
     as_of: &str,
 ) -> Result<BTreeMap<String, Money>, DomainError> {
-    if !is_civil_date(as_of) {
-        return Err(DomainError::InvalidDate(as_of.to_owned()));
-    }
+    validate_civil_date(as_of)?;
     let mut balances: BTreeMap<String, Money> = BTreeMap::new();
     for row in rows
         .iter()

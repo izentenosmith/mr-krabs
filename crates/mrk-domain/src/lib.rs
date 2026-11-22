@@ -15,6 +15,7 @@ pub use category::{
     BudgetLineRow, BudgetSum, CategoryError, CategoryKind, CategoryNode, MergePlan, normalize_name,
     plan_merge, validate_kind_change, validate_parent,
 };
+pub use date::validate_civil_date;
 pub use entry::{
     AccountInfo, JournalEntry, LedgerContext, LegField, LegStatus, LegUpdate, NewTx, StoredLeg,
     TxType, UpdatePlan, ensure_unlocked, plan_update,
