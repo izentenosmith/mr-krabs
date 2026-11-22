@@ -72,16 +72,8 @@ impl App {
     /// language and base currency (docs/01, ADR-0008). Idempotent, and never resurrects a
     /// seeded row the household deleted. `household_create` calls it; adoption will too.
     pub fn seed_household_defaults(&mut self) -> Result<SeedReport, ApiError> {
-        let household = self.household_row()?;
-        let locale = seed::Locale::parse(&household.locale).ok_or_else(|| {
-            ApiError::internal(format!("unsupported locale {:?}", household.locale))
-        })?;
-        self.store
-            .seed_defaults(
-                &seed::seed_categories(locale),
-                &seed::seed_accounts(locale, &household.base_currency_code),
-            )
-            .map_err(ApiError::internal)
+        let (categories, accounts) = seed_catalogue(&self.household_row()?)?;
+        Ok(self.store.seed_defaults(&categories, &accounts)?)
     }
 
     /// Deletes a category (FR-BU-07). With `merge_into`, everything that references it moves
@@ -166,6 +158,18 @@ impl App {
             })
             .collect()
     }
+}
+
+/// The default categories and accounts in the household's language and base currency.
+pub(crate) fn seed_catalogue(
+    household: &mrk_store::HouseholdRow,
+) -> Result<(Vec<mrk_store::SeedCategory>, Vec<mrk_store::SeedAccount>), ApiError> {
+    let locale = seed::Locale::parse(&household.locale)
+        .ok_or_else(|| ApiError::internal(format!("unsupported locale {:?}", household.locale)))?;
+    Ok((
+        seed::seed_categories(locale),
+        seed::seed_accounts(locale, &household.base_currency_code),
+    ))
 }
 
 /// Default database location used by shells when none is configured.

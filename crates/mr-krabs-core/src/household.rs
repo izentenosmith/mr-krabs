@@ -7,7 +7,7 @@ use crate::api::{
     BootstrapDto, BudgetMode, HouseholdDto, HouseholdInput, Locale, MemberDto, SettingsDto,
 };
 use crate::support::{Fields, command, from_wire, new_id, wire};
-use crate::{ApiError, App, ErrorCode};
+use crate::{ApiError, App, ErrorCode, seed_catalogue};
 
 /// Longest household, member or account name.
 pub(crate) const NAME_MAX: usize = 100;
@@ -34,8 +34,8 @@ impl App {
         })
     }
 
-    /// Onboarding: in one transaction, the household, me as its first member and the local
-    /// device's link to me (X-2); then the default categories and accounts.
+    /// Onboarding, in one transaction: the household, me as its first member, the local
+    /// device's link to me (X-2) and the default categories and accounts.
     pub fn household_create(&mut self, input: HouseholdInput) -> Result<HouseholdDto, ApiError> {
         command("household_create", || {
             let mut f = Fields::default();
@@ -62,14 +62,15 @@ impl App {
                 display_name: my_name,
                 color: None,
             };
+            let (categories, accounts) = seed_catalogue(&household)?;
             self.store.write(|w| {
                 w.insert_household(&household)?;
                 w.insert_member(&household.id, &me)?;
                 w.link_local_device(&me.id)?;
+                w.seed_defaults(&categories, &accounts)?;
                 Ok::<_, ApiError>(())
             })?;
             tracing::debug!(household = %household.id, member = %me.id, "household created");
-            self.seed_household_defaults()?;
             household_dto(&household)
         })
     }

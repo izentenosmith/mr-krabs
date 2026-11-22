@@ -1058,7 +1058,12 @@ fn f2_number_mask_with_more_than_four_digits_of_any_script_is_refused() {
     let mut input = checking(None);
     input["numberMask"] = json!("４１１１ １１１１ １１１１ １１１１");
     let e = env.err("account_create", json!({ "input": input }));
-    field_error(&e, ErrorCode::Validation, "numberMask", "errors.field.fullNumber");
+    field_error(
+        &e,
+        ErrorCode::Validation,
+        "numberMask",
+        "errors.field.fullNumber",
+    );
     assert_eq!(env.state(), before);
 }
 

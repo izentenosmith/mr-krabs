@@ -168,4 +168,31 @@ mod tests {
         .unwrap();
         assert_eq!(count(&s, "change_log"), 1);
     }
+
+    #[test]
+    fn seeding_inside_a_write_is_rolled_back_with_it() {
+        let s = store();
+        let seeds = [crate::SeedCategory {
+            id: "food".into(),
+            parent_id: None,
+            kind: "expense",
+            name: "Comida".into(),
+            name_key: "comida".into(),
+            seed_key: "expense.food".into(),
+            sort_order: 1,
+        }];
+        let r: Result<(), StoreError> = s.write(|w| {
+            w.insert_household(&household())?;
+            w.seed_defaults(&seeds, &[])?;
+            Err(StoreError::NoLocalDevice)
+        });
+        assert!(r.is_err());
+        assert_eq!((count(&s, "household"), count(&s, "category")), (0, 0));
+        s.write(|w| {
+            w.insert_household(&household())?;
+            w.seed_defaults(&seeds, &[]).map(|_| ())
+        })
+        .unwrap();
+        assert_eq!((count(&s, "category"), count(&s, "change_log")), (1, 1));
+    }
 }
