@@ -64,6 +64,7 @@ Desktop app (macOS, native): `pnpm install && pnpm tauri dev`. Details in [docs/
 | 06 | [Statement ingestion & AI](docs/06-statement-ingestion.md) | CSV/XLSX/PDF import, optional AI extraction |
 | 07 | [Roadmap](docs/07-roadmap.md) | Step-by-step implementation plan |
 | 08 | [Development](docs/08-development.md) | Docker compose, native setup, devserver |
+| 09 | [Prior art](docs/09-prior-art.md) | What we took from GnuCash, Sure and Actual, and what we left out |
 | — | [ADRs](docs/adr/) | Architecture decision records |
 | — | [Glossary](docs/glossary.md) | Terms (EN/ES) |
 

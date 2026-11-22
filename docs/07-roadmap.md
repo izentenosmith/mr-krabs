@@ -47,7 +47,8 @@ gantt
 - **Done when:** create a checking account, add expenses & a transfer to savings, balances correct; transfer not counted as expense; 100% of money logic covered by Rust tests.
 
 ### M2 · Categories, budgets, plan-vs-real (replaces the spreadsheet)
-- Seed category tree (see [01](01-requirements.md#default-category-tree-seed-es-cl)).
+- Seed category tree (see [01](01-requirements.md#default-category-tree-seed-es-cl)) as ordinary, editable rows; savings/investments seeded as accounts.
+- Category management: create, rename, move (any depth), archive, delete-with-merge; roll-up through the tree in reports and budgets (FR-BU-01, FR-BU-07, FR-BU-08).
 - `budget_set`, `budget_copy_month`, `budget_matrix` (annual plan vs real, group subtotals, monthly cash flow, total expenses).
 - `report_month_calendar` (day grid), `report_cash_flow`, `report_spending`.
 - UI: Budget matrix page, Month calendar page, Dashboard (cash flow, spending by group).
@@ -60,12 +61,15 @@ gantt
 
 ### M4 · Credit cards & recurring
 - Card accounts (limit, cycle, due day, national/international sections), installment plans + schedule, budget mode.
-- Recurring rules (bills with expected range, salaries with pay-day window, subscriptions), `report_upcoming`.
+- Recurring rules (bills with expected, approximate or ranged amounts, salaries with pay-day window, subscriptions), `report_upcoming`, recurring-pattern detection and the "since last run" list (FR-TX-09).
 - FX rates (manual + CSV), USD/UF support, `fx_exchange` entries; net worth report.
 
 ### M5 · Import I
-- CSV/XLSX mapping profiles, staging tables, review UI, dedup, transfer matching, payee rules + "create rule" learning, batch revert.
-- Synthetic fixtures generator.
+- CSV/XLSX mapping profiles (with optional category column), staging tables, review UI, dedup with match scores, transfer matching, batch revert.
+- Category resolution by name with the unknown-categories panel (FR-IM-07).
+- **Household workbook import** (FR-IM-06): bring the spreadsheet's history and planned budgets in through staging.
+- Rules engine with stages + "create rule" learning (FR-TX-10), local learned categorizer (FR-TX-12), learned-mappings screen (FR-IM-08).
+- Synthetic fixtures generator (statements and a synthetic workbook).
 
 ### M6 · Import II (PDF + AI)
 - Built-in PDF parsers for the household's banks (golden tests on synthetic PDFs).
