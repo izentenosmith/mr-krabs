@@ -396,6 +396,46 @@ mod tests {
         assert_eq!(parse_es_cl("UF 1,2345", 4), Ok(12_345));
     }
 
+    /// X-9: Rust's own EUR display string must parse back.
+    #[test]
+    fn parse_eur_display() {
+        assert_eq!(parse_es_cl("€1.234,56", 2), Ok(123_456));
+        assert_eq!(parse_es_cl("-€1.234,56", 2), Ok(-123_456));
+        assert_eq!(parse_es_cl("(€1.234,56)", 2), Ok(-123_456));
+        assert_eq!(parse_es_cl("EUR 1.234,56", 2), Ok(123_456));
+        assert_eq!(parse_es_cl("1.234,56 EUR", 2), Ok(123_456));
+    }
+
+    #[test]
+    fn parse_accepts_markers_case_insensitively() {
+        assert_eq!(parse_es_cl("clp 27.990", 0), Ok(27_990));
+        assert_eq!(parse_es_cl("uf 1,5", 4), Ok(15_000));
+        assert_eq!(parse_es_cl("27.990 CLP", 0), Ok(27_990));
+    }
+
+    #[test]
+    fn parse_rejects_misplaced_markers() {
+        for bad in [
+            "€", "$", "US$", "UF", "CLP", "-€", "()", // marker alone
+            "1.€234", "12€", "1$0",                // marker in the middle or at the end
+            "$$5", "€€5", "CLP$5", "$5CLP", "US$€5", // two markers
+            "$-5", "€(5)",                         // marker before the sign
+            "abc5", "5abc", "X$5",                 // unknown letters
+        ] {
+            assert!(parse_es_cl(bad, 2).is_err(), "{bad:?} should be rejected");
+        }
+    }
+
+    #[test]
+    fn parse_reads_the_i64_edges() {
+        assert_eq!(parse_es_cl(&format_es_cl(i64::MIN, 0, "$"), 0), Ok(i64::MIN));
+        assert_eq!(parse_es_cl(&format_es_cl(i64::MAX, 0, "$"), 0), Ok(i64::MAX));
+        assert_eq!(
+            parse_es_cl("9.223.372.036.854.775.808", 0),
+            Err(MoneyError::Overflow)
+        );
+    }
+
     #[test]
     fn parse_rejects_bad_input() {
         assert_eq!(
@@ -469,6 +509,17 @@ mod properties {
         ) {
             let s = format_es_cl(minor, units, "$");
             prop_assert_eq!(parse_es_cl(&s, units), Ok(minor), "{}", s);
+        }
+
+        /// X-8/X-9: the UI re-sends `MoneyDto.display`, so every built-in currency's own
+        /// display string must parse back to the same amount, across the whole `i64` range.
+        #[test]
+        fn display_round_trips_for_every_built_in_currency(
+            minor in any::<i64>(),
+            currency in prop::sample::select(Currency::BUILT_IN.to_vec()),
+        ) {
+            let s = format_es_cl(minor, currency.minor_units, currency.symbol);
+            prop_assert_eq!(parse_es_cl(&s, currency.minor_units), Ok(minor), "{}", s);
         }
     }
 }
