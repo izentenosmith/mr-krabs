@@ -27,10 +27,16 @@ impl Db {
         Store::open(&self.path).unwrap()
     }
     fn int(&self, sql: &str) -> i64 {
-        self.raw().connection().query_row(sql, [], |r| r.get(0)).unwrap()
+        self.raw()
+            .connection()
+            .query_row(sql, [], |r| r.get(0))
+            .unwrap()
     }
     fn text(&self, sql: &str) -> String {
-        self.raw().connection().query_row(sql, [], |r| r.get(0)).unwrap()
+        self.raw()
+            .connection()
+            .query_row(sql, [], |r| r.get(0))
+            .unwrap()
     }
     fn local_device(&self) -> String {
         self.text("SELECT id FROM device WHERE is_local = 1")
@@ -137,8 +143,10 @@ fn category_merge_logs_every_touched_row_with_the_local_device_and_increasing_hl
 
     let log = db.log();
     let device = db.local_device();
-    let mut touched: Vec<(String, String)> =
-        log.iter().map(|l| (l.entity.clone(), l.id.clone())).collect();
+    let mut touched: Vec<(String, String)> = log
+        .iter()
+        .map(|l| (l.entity.clone(), l.id.clone()))
+        .collect();
     touched.sort();
     let mut want: Vec<(String, String)> = [
         ("budget_line", "b1"),
@@ -187,7 +195,10 @@ fn deleting_an_unused_category_logs_one_delete_with_its_field_clock() {
     let log = db.log();
     assert_eq!(log.len(), 1, "{log:?}");
     let l = &log[0];
-    assert_eq!((l.entity.as_str(), l.id.as_str(), l.op.as_str()), ("category", cinema.as_str(), "delete"));
+    assert_eq!(
+        (l.entity.as_str(), l.id.as_str(), l.op.as_str()),
+        ("category", cinema.as_str(), "delete")
+    );
     assert_eq!(l.fields, json!({"deleted": {"old": 0, "new": 1}}));
     let (hlc, dev): (i64, String) = db
         .raw()
@@ -246,7 +257,8 @@ fn opening_twice_keeps_one_local_device() {
 fn stamps_after_a_restart_are_greater_than_every_earlier_stamp() {
     let db = Db::new("restart");
     let mut app = household_app(&db);
-    app.category_delete(&seed_id("expense.leisure.cinema"), None).unwrap();
+    app.category_delete(&seed_id("expense.leisure.cinema"), None)
+        .unwrap();
     let first = db.log()[0].hlc;
     drop(app);
     // A stamp from a clock running ten days ahead (e.g. the wall clock later went back).
@@ -260,7 +272,8 @@ fn stamps_after_a_restart_are_greater_than_every_earlier_stamp() {
         )
         .unwrap();
     let mut app = App::open(&db.path).unwrap();
-    app.category_delete(&seed_id("expense.food.delivery"), None).unwrap();
+    app.category_delete(&seed_id("expense.food.delivery"), None)
+        .unwrap();
     let last = db.log().last().unwrap().hlc;
     assert!(last > ahead && ahead > first, "{first} {ahead} {last}");
 }
@@ -271,8 +284,12 @@ fn seeding_writes_no_change_log_but_edits_do() {
     let mut app = household_app(&db);
     assert_eq!(db.int("SELECT count(*) FROM change_log"), 0);
     assert_eq!(db.int("SELECT max(hlc) FROM category"), 0);
-    assert_eq!(db.int("SELECT count(*) FROM category WHERE hlc_device <> 'seed'"), 0);
+    assert_eq!(
+        db.int("SELECT count(*) FROM category WHERE hlc_device <> 'seed'"),
+        0
+    );
     // Contrast: a user edit on a seeded row is logged.
-    app.category_delete(&seed_id("expense.leisure.cinema"), None).unwrap();
+    app.category_delete(&seed_id("expense.leisure.cinema"), None)
+        .unwrap();
     assert_eq!(db.int("SELECT count(*) FROM change_log"), 1);
 }

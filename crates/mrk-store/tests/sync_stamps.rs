@@ -26,8 +26,11 @@ fn at_v2() -> Store {
     let c = s.connection();
     for (i, (_, sql)) in MIGRATIONS.iter().enumerate().take(2) {
         c.pragma_update(None, "foreign_keys", false).unwrap();
-        c.execute_batch(&format!("BEGIN; {sql}; PRAGMA user_version = {}; COMMIT;", i + 1))
-            .unwrap();
+        c.execute_batch(&format!(
+            "BEGIN; {sql}; PRAGMA user_version = {}; COMMIT;",
+            i + 1
+        ))
+        .unwrap();
         c.pragma_update(None, "foreign_keys", true).unwrap();
     }
     assert_eq!(s.schema_version().unwrap(), 2);
@@ -65,10 +68,16 @@ fn v2_database_migrates_with_nullable_device_key_and_member() {
             .connection()
             .prepare("SELECT id || ':' || member_id || ':' || hex(public_key) || ':' || is_local FROM device ORDER BY id")
             .unwrap();
-        st.query_map([], |r| r.get(0)).unwrap().map(Result::unwrap).collect()
+        st.query_map([], |r| r.get(0))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect()
     };
     assert_eq!(rows, ["d1:m:0102:1", "d2:m:0304:0"]);
-    assert_eq!(count(&s, "SELECT count(*) FROM pragma_foreign_key_check"), 0);
+    assert_eq!(
+        count(&s, "SELECT count(*) FROM pragma_foreign_key_check"),
+        0
+    );
     assert_eq!(count(&s, "PRAGMA foreign_keys"), 1);
     s.connection()
         .execute(
@@ -83,7 +92,10 @@ fn creating_the_local_device_writes_no_change_log() {
     let s = ready();
     let id = s.local_device_id().unwrap().to_owned();
     assert_eq!(
-        count(&s, "SELECT count(*) FROM device WHERE is_local = 1 AND public_key IS NULL AND member_id IS NULL"),
+        count(
+            &s,
+            "SELECT count(*) FROM device WHERE is_local = 1 AND public_key IS NULL AND member_id IS NULL"
+        ),
         1
     );
     assert_eq!(uuid::Uuid::parse_str(&id).unwrap().get_version_num(), 7);
@@ -92,7 +104,10 @@ fn creating_the_local_device_writes_no_change_log() {
     // Contrast: a replicated write does leave a row.
     let tx = s.connection().unchecked_transaction().unwrap();
     s.track(&tx, "tag", "t", Visibility::Household, |tx| {
-        tx.execute("INSERT INTO tag (id,name,hlc,hlc_device) VALUES ('t','x',0,'')", [])?;
+        tx.execute(
+            "INSERT INTO tag (id,name,hlc,hlc_device) VALUES ('t','x',0,'')",
+            [],
+        )?;
         Ok(())
     })
     .unwrap();
@@ -163,12 +178,14 @@ struct Line {
 }
 
 fn line() -> impl Strategy<Value = Line> {
-    (1u8..=9, 0i64..1_000_000_000, 0i64..=1, any::<bool>()).prop_map(|(m, amount, rollover, mem)| Line {
-        period: format!("2026-0{m}"),
-        amount,
-        rollover,
-        member: mem.then_some("m"),
-    })
+    (1u8..=9, 0i64..1_000_000_000, 0i64..=1, any::<bool>()).prop_map(
+        |(m, amount, rollover, mem)| Line {
+            period: format!("2026-0{m}"),
+            amount,
+            rollover,
+            member: mem.then_some("m"),
+        },
+    )
 }
 
 fn track_sql(s: &Store, sql: &str, p: &Line) {
@@ -190,8 +207,8 @@ proptest! {
     fn create_update_delete_round_trips_fields_json(a in line(), b in line()) {
         let s = ready();
         track_sql(&s, "INSERT INTO budget_line (id,period,category_id,scope,amount_minor,currency_code,rollover,member_id,hlc,hlc_device) \
-                       VALUES ('b',?1,'c','household',?2,'CLP',?3,?4,0,'')", &a);
-        track_sql(&s, "UPDATE budget_line SET period=?1, amount_minor=?2, rollover=?3, member_id=?4 WHERE id='b'", &b);
+                       VALUES ('b',?1,'c',CASE WHEN ?4 IS NULL THEN 'household' ELSE 'personal' END,?2,'CLP',?3,?4,0,'')", &a);
+        track_sql(&s, "UPDATE budget_line SET period=?1, amount_minor=?2, rollover=?3, member_id=?4, scope=CASE WHEN ?4 IS NULL THEN 'household' ELSE 'personal' END WHERE id='b'", &b);
         let tx = s.connection().unchecked_transaction().unwrap();
         s.track(&tx, "budget_line", "b", Visibility::Household, |tx| {
             tx.execute("UPDATE budget_line SET deleted = 1 WHERE id = 'b'", [])?;

@@ -2,14 +2,14 @@
 //! (tree rules, merge plan) and `mr-krabs-core` (seed catalogue); this module reads rows
 //! and applies those decisions in one transaction each.
 //!
-//! Change-log entries (docs/05) are not written yet: the log writer arrives with sync.
-//! Seed rows never get one (ADR-0008).
+//! User edits are logged through [`Store::track`] (docs/05, ADR-0010); seed rows never are
+//! (ADR-0008).
 
-use rusqlite::{OptionalExtension, params};
+use rusqlite::{OptionalExtension, ToSql, Transaction, params};
 
-use crate::{Result, Store};
+use crate::{Result, Store, Visibility};
 
-/// HLC timestamp and device that every row a command writes is stamped with.
+/// HLC timestamp and device a change is stamped with (issued by the local clock).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Stamp {
     pub hlc: i64,
@@ -222,60 +222,93 @@ impl Store {
         )?)
     }
 
-    /// Soft-deletes a category nothing live references.
-    pub fn delete_category(&mut self, id: &str, stamp: &Stamp) -> Result<()> {
-        self.conn.execute(
-            "UPDATE category SET deleted = 1, hlc = ?2, hlc_device = ?3 WHERE id = ?1",
-            params![id, stamp.hlc, stamp.device],
-        )?;
+    /// Soft-deletes a category nothing live references, and logs it.
+    pub fn delete_category(&mut self, id: &str) -> Result<()> {
+        let tx = self.conn.unchecked_transaction()?;
+        self.track(&tx, "category", id, Visibility::Household, |tx| {
+            tx.execute("UPDATE category SET deleted = 1 WHERE id = ?1", [id])?;
+            Ok(())
+        })?;
+        tx.commit()?;
         Ok(())
     }
 
     /// Applies a merge in one transaction (FR-BU-07): every reference to `from` moves to
     /// `into`, then `from` is tombstoned with `merged_into_id = into` so references that
-    /// arrive later (sync) can follow it (design D-18).
-    pub fn apply_category_merge(&mut self, m: &CategoryMergeWrite, stamp: &Stamp) -> Result<()> {
-        let tx = self.conn.transaction()?;
-        let (h, d) = (stamp.hlc, stamp.device.as_str());
+    /// arrive later (sync) can follow it (design D-18). Every touched row is logged.
+    pub fn apply_category_merge(&mut self, m: &CategoryMergeWrite) -> Result<()> {
+        let tx = self.conn.unchecked_transaction()?;
+        let set = |tx: &Transaction<'_>, table: &str, column: &str, id: &str, value: &dyn ToSql| {
+            self.track(tx, table, id, Visibility::Household, |tx| {
+                tx.execute(
+                    &format!("UPDATE {table} SET {column} = ?2 WHERE id = ?1"),
+                    params![id, value],
+                )?;
+                Ok(())
+            })
+        };
         for child in &m.reparent {
-            tx.execute(
-                "UPDATE category SET parent_id = ?2, hlc = ?3, hlc_device = ?4 WHERE id = ?1",
-                params![child, m.into, h, d],
-            )?;
+            set(&tx, "category", "parent_id", child, &m.into)?;
         }
         for line in &m.move_budget_lines {
-            tx.execute(
-                "UPDATE budget_line SET category_id = ?2, hlc = ?3, hlc_device = ?4 WHERE id = ?1",
-                params![line, m.into, h, d],
-            )?;
+            set(&tx, "budget_line", "category_id", line, &m.into)?;
         }
         for (target, amount, absorbed) in &m.sum_budget_lines {
-            tx.execute(
-                "UPDATE budget_line SET deleted = 1, hlc = ?2, hlc_device = ?3 WHERE id = ?1",
-                params![absorbed, h, d],
-            )?;
-            tx.execute(
-                "UPDATE budget_line SET amount_minor = ?2, hlc = ?3, hlc_device = ?4 WHERE id = ?1",
-                params![target, amount, h, d],
-            )?;
+            set(&tx, "budget_line", "deleted", absorbed, &1)?;
+            set(&tx, "budget_line", "amount_minor", target, amount)?;
         }
-        for sql in [
-            "UPDATE posting SET category_id = ?2, hlc = ?3, hlc_device = ?4 WHERE category_id = ?1",
-            "UPDATE payee SET default_category_id = ?2, hlc = ?3, hlc_device = ?4 WHERE default_category_id = ?1",
-            "UPDATE payee_rule SET set_category_id = ?2, hlc = ?3, hlc_device = ?4 WHERE set_category_id = ?1",
-            "UPDATE recurring_rule_posting SET category_id = ?2, hlc = ?3, hlc_device = ?4 WHERE category_id = ?1",
+        // A posting is private when its entry touches a private account (docs/05).
+        let postings: Vec<(String, bool)> = {
+            let mut stmt = tx.prepare(
+                "SELECT p.id, EXISTS (SELECT 1 FROM posting q JOIN account a ON a.id = q.account_id
+                                      WHERE q.entry_id = p.entry_id AND a.visibility = 'private')
+                 FROM posting p WHERE p.category_id = ?1 ORDER BY p.id",
+            )?;
+            stmt.query_map([&m.from], |r| Ok((r.get(0)?, r.get(1)?)))?
+                .collect::<std::result::Result<_, _>>()?
+        };
+        for (id, private) in postings {
+            let visibility = if private {
+                Visibility::Private
+            } else {
+                Visibility::Household
+            };
+            self.track(&tx, "posting", &id, visibility, |tx| {
+                tx.execute(
+                    "UPDATE posting SET category_id = ?2 WHERE id = ?1",
+                    params![id, m.into],
+                )?;
+                Ok(())
+            })?;
+        }
+        for (table, column) in [
+            ("payee", "default_category_id"),
+            ("payee_rule", "set_category_id"),
+            ("recurring_rule_posting", "category_id"),
         ] {
-            tx.execute(sql, params![m.from, m.into, h, d])?;
+            let ids: Vec<String> = {
+                let mut stmt = tx.prepare(&format!(
+                    "SELECT id FROM {table} WHERE {column} = ?1 ORDER BY id"
+                ))?;
+                stmt.query_map([&m.from], |r| r.get(0))?
+                    .collect::<std::result::Result<_, _>>()?
+            };
+            for id in ids {
+                set(&tx, table, column, &id, &m.into)?;
+            }
         }
-        // Staged import rows are local-only and carry no sync columns.
+        // Staged import rows are local-only and carry no sync columns: not logged.
         tx.execute(
             "UPDATE import_row SET suggested_category_id = ?2 WHERE suggested_category_id = ?1",
             params![m.from, m.into],
         )?;
-        tx.execute(
-            "UPDATE category SET deleted = 1, merged_into_id = ?2, hlc = ?3, hlc_device = ?4 WHERE id = ?1",
-            params![m.from, m.into, h, d],
-        )?;
+        self.track(&tx, "category", &m.from, Visibility::Household, |tx| {
+            tx.execute(
+                "UPDATE category SET deleted = 1, merged_into_id = ?2 WHERE id = ?1",
+                params![m.from, m.into],
+            )?;
+            Ok(())
+        })?;
         tx.commit()?;
         Ok(())
     }

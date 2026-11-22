@@ -25,6 +25,10 @@ pub const MIGRATIONS: &[(&str, &str)] = &[
         "0002_ledger_legs_and_category_keys",
         include_str!("../migrations/0002_ledger_legs_and_category_keys.sql"),
     ),
+    (
+        "pending_sync-stamps__device_key_nullable",
+        include_str!("../migrations/pending_sync-stamps__device_key_nullable.sql"),
+    ),
 ];
 
 #[derive(Debug)]
@@ -40,6 +44,19 @@ pub enum StoreError {
         migration: &'static str,
         table: String,
         violations: usize,
+    },
+    /// A change was recorded before [`Store::ensure_local_device`] ran.
+    NoLocalDevice,
+    Clock(mrk_sync::HlcError),
+    /// A tracked write named a table that is not an identifier, or a row that is not there.
+    NotTracked {
+        entity: String,
+        id: String,
+    },
+    /// A changed column holds a value the change log does not carry (REAL or BLOB).
+    UnloggableValue {
+        entity: String,
+        field: String,
     },
 }
 
@@ -60,6 +77,15 @@ impl fmt::Display for StoreError {
                 f,
                 "migration {migration} rolled back: {violations} foreign-key violation(s), first in {table}"
             ),
+            Self::NoLocalDevice => write!(f, "no local device: open the store through the app"),
+            Self::Clock(e) => write!(f, "clock: {e}"),
+            Self::NotTracked { entity, id } => write!(f, "no tracked row {entity}/{id}"),
+            Self::UnloggableValue { entity, field } => {
+                write!(
+                    f,
+                    "{entity}.{field} holds a value the change log cannot carry"
+                )
+            }
         }
     }
 }
@@ -83,6 +109,8 @@ pub type Result<T> = std::result::Result<T, StoreError>;
 pub struct Store {
     conn: Connection,
     path: Option<PathBuf>,
+    /// The local device and its clock, once [`Store::ensure_local_device`] ran.
+    local: Option<change_log::LocalClock>,
 }
 
 impl Store {
@@ -105,7 +133,11 @@ impl Store {
     fn configure(conn: Connection, path: Option<PathBuf>) -> Result<Self> {
         conn.busy_timeout(Duration::from_secs(5))?;
         conn.execute_batch("PRAGMA foreign_keys = ON;")?;
-        Ok(Self { conn, path })
+        Ok(Self {
+            conn,
+            path,
+            local: None,
+        })
     }
 
     pub fn path(&self) -> Option<&Path> {
@@ -140,10 +172,12 @@ impl Store {
         }
         for (i, (name, sql)) in MIGRATIONS.iter().enumerate().skip(current as usize) {
             // Must be set outside a transaction: SQLite ignores it inside one.
+            tracing::info!(migration = name, "migration start");
             self.conn.pragma_update(None, "foreign_keys", false)?;
             let applied = Self::apply(&mut self.conn, name, sql, (i + 1) as u32);
             self.conn.pragma_update(None, "foreign_keys", true)?;
             applied?;
+            tracing::info!(migration = name, "migration done");
         }
         self.schema_version()
     }
@@ -248,8 +282,8 @@ mod tests {
     #[test]
     fn migrates_from_empty_and_is_idempotent() {
         let mut s = migrated();
-        assert_eq!(s.schema_version().unwrap(), 2);
-        assert_eq!(s.migrate().unwrap(), 2);
+        assert_eq!(s.schema_version().unwrap(), Store::latest_version());
+        assert_eq!(s.migrate().unwrap(), Store::latest_version());
     }
 
     #[test]
@@ -288,7 +322,7 @@ mod tests {
     }
 
     /// The accepted design (docs/db-review/design/schema.sql, proposal rev 3) is the target:
-    /// 0001 + 0002 must build exactly that schema.
+    /// The migrations must build exactly that schema.
     #[test]
     fn migrated_schema_matches_accepted_design() {
         let design = Connection::open_in_memory().unwrap();
@@ -368,7 +402,7 @@ mod tests {
     #[test]
     fn migration_0002_carries_v1_rows() {
         let mut s = v1_with("");
-        assert_eq!(s.migrate().unwrap(), 2);
+        assert_eq!(s.migrate().unwrap(), Store::latest_version());
         assert_eq!(
             strings(
                 &s,
