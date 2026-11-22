@@ -6,8 +6,8 @@
 use std::collections::BTreeMap;
 
 use mrk_domain::{
-    AccountInfo, BalanceRow, LedgerContext, LegStatus, NewTx, Posting, account_balances,
-    ensure_unlocked, plan_update,
+    AccountInfo, BalanceRow, DomainError, LedgerContext, LegStatus, NewTx, Posting, StoredLeg,
+    account_balances, ensure_unlocked, plan_update,
 };
 use mrk_money::Money;
 use mrk_store::{AccountRow, EntryRow, PostingRow, Write};
@@ -45,6 +45,11 @@ struct StoredOpening {
 }
 
 impl StoredOpening {
+    /// The stored postings as domain legs.
+    fn legs(&self) -> Result<Vec<StoredLeg>, ApiError> {
+        self.postings.iter().map(stored_leg).collect()
+    }
+
     fn live(&self) -> Option<Opening> {
         if self.entry.deleted {
             return None;
@@ -314,9 +319,9 @@ fn opening_tx(row: &AccountRow, o: &Opening) -> NewTx {
     }
 }
 
-fn opening_error(e: mrk_domain::DomainError) -> ApiError {
+fn opening_error(e: DomainError) -> ApiError {
     match e {
-        mrk_domain::DomainError::InvalidDate(_) => field_error(
+        DomainError::InvalidDate(_) => field_error(
             ErrorCode::Validation,
             "openingBalance.date",
             "invalidDate",
@@ -366,11 +371,7 @@ fn rewrite_opening(
     s: StoredOpening,
     o: &Opening,
 ) -> Result<(), ApiError> {
-    let legs = s
-        .postings
-        .iter()
-        .map(stored_leg)
-        .collect::<Result<Vec<_>, _>>()?;
+    let legs = s.legs()?;
     let plan = plan_update(&legs, &opening_tx(row, o), &context(row)?).map_err(opening_error)?;
     let vis = row.log_visibility();
     w.update_entry(
@@ -382,9 +383,9 @@ fn rewrite_opening(
         vis,
     )?;
     for leg in [plan.account_leg, plan.counter_leg] {
-        let stored = s.postings.iter().find(|p| p.id == leg.id);
-        let status = stored
-            .and_then(|p| stored_leg(p).ok())
+        let status = legs
+            .iter()
+            .find(|l| l.id == leg.id)
             .and_then(|l| l.status)
             .unwrap_or(LegStatus::Cleared);
         w.update_posting(&posting_row(leg.id, &s.entry.id, &leg.posting, status), vis)?;
@@ -395,13 +396,8 @@ fn rewrite_opening(
 /// Soft-deletes the entry and its postings (moving their currency with the account's, so a
 /// later restore stays valid).
 fn remove_opening(w: &Write<'_>, row: &AccountRow, s: StoredOpening) -> Result<(), ApiError> {
-    let legs = s
-        .postings
-        .iter()
-        .map(stored_leg)
-        .collect::<Result<Vec<_>, _>>()?;
     if !s.entry.deleted {
-        ensure_unlocked(&legs).map_err(domain_error)?;
+        ensure_unlocked(&s.legs()?).map_err(domain_error)?;
     }
     let vis = row.log_visibility();
     w.update_entry(
