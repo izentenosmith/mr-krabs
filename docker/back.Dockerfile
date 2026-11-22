@@ -17,4 +17,5 @@ ENV CARGO_TARGET_DIR=/cargo-target \
 
 EXPOSE 7878
 # No HEALTHCHECK: compose owns it (compose.yaml, service `back`).
-CMD ["cargo", "watch", "--poll", "-w", "crates", "-w", "apps/devserver", "-x", "run -p mrk-devserver"]
+# --locked, as in CI: the repo is bind-mounted, so cargo must not rewrite Cargo.lock.
+CMD ["cargo", "watch", "--poll", "-w", "crates", "-w", "apps/devserver", "-x", "run --locked -p mrk-devserver"]

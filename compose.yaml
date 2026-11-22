@@ -93,7 +93,8 @@ services:
       - cargo-registry:/usr/local/cargo/registry
       - cargo-git:/usr/local/cargo/git
       - cargo-target-test:/cargo-target
-    command: ["cargo", "test", "--workspace", "--exclude", "mr-krabs-desktop"]
+    # --locked, as in CI: fail on a stale Cargo.lock instead of rewriting it on the host.
+    command: ["cargo", "test", "--locked", "--workspace", "--exclude", "mr-krabs-desktop"]
 
   test-front:
     <<: *node
