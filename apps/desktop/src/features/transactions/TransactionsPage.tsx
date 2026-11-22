@@ -104,7 +104,7 @@ export function TransactionsPage({
       });
       if (key === lastOpen.current) setDialog({ mode: "edit", detail, key });
     } catch (raw) {
-      toastError(raw);
+      if (key === lastOpen.current) toastError(raw); // an abandoned opening stays silent (F44)
     }
   };
 
@@ -168,7 +168,14 @@ export function TransactionsPage({
         </Button>
       </header>
       {accounts.isError && !notAvailable && (
-        <ErrorAlert error={accounts.error} onRetry={() => void accounts.refetch()} />
+        // One alert for both loads; its retry also retries a failed list (F43).
+        <ErrorAlert
+          error={accounts.error}
+          onRetry={() => {
+            void accounts.refetch();
+            if (list.isError) void list.refetch();
+          }}
+        />
       )}
       {notAvailable ? (
         <StateBlock icon={Hourglass} title={t("notAvailable.title")} body={t("notAvailable.body")} />
@@ -177,7 +184,9 @@ export function TransactionsPage({
           {t("loading")}
         </p>
       ) : list.isError && !list.data ? (
-        <ErrorAlert error={list.error} onRetry={() => void list.refetch()} />
+        accounts.isError ? null : (
+          <ErrorAlert error={list.error} onRetry={() => void list.refetch()} />
+        )
       ) : rows.length === 0 ? (
         <StateBlock icon={Inbox} title={t("tx.emptyTitle")} body={t("tx.emptyBody")} />
       ) : (

@@ -298,3 +298,39 @@ describe("TransactionsPage loading", () => {
     expect(screen.queryByText("Aún no hay transacciones")).not.toBeInTheDocument();
   });
 });
+
+describe("TransactionsPage follow-ups", () => {
+  it("a failed tx_get for an abandoned opening shows no toast (F44)", async () => {
+    api.account.list.mockResolvedValue(accounts);
+    api.tx.list.mockResolvedValue({
+      items: [row, { ...row, id: "t2", description: "Otra Prueba" }],
+      nextCursor: null,
+    });
+    let failA!: (e: unknown) => void;
+    api.tx.get.mockImplementation((id: string) =>
+      id === "t1"
+        ? new Promise((_, reject) => (failA = reject))
+        : Promise.resolve(detail("t2", "Otra Prueba")),
+    );
+    renderPage();
+    fireEvent.click(await screen.findByRole("row", { name: /Feria Prueba/ }));
+    fireEvent.click(screen.getByRole("row", { name: /Otra Prueba/ }));
+    await screen.findByRole("dialog", { name: "Editar transacción" });
+    failA(new ApiError("NOT_FOUND", "developer message"));
+    await new Promise((r) => setTimeout(r, 30));
+    expect(screen.queryByText(/No encontramos este registro/)).not.toBeInTheDocument();
+  });
+
+  it("when both loads fail, one alert retries both (F43)", async () => {
+    api.account.list.mockRejectedValueOnce(new ApiError("TRANSPORT", "dev"));
+    api.account.list.mockResolvedValue(accounts);
+    api.tx.list.mockRejectedValueOnce(new ApiError("TRANSPORT", "dev"));
+    api.tx.list.mockResolvedValue({ items: [row], nextCursor: null });
+    renderPage();
+    await screen.findByRole("alert");
+    await waitFor(() => expect(screen.getAllByRole("alert")).toHaveLength(1));
+    fireEvent.click(screen.getByRole("button", { name: "Reintentar" }));
+    expect(await screen.findByRole("row", { name: /Feria Prueba/ })).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+  });
+});
