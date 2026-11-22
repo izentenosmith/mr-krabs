@@ -25,7 +25,7 @@ use crate::{ApiError, App, ErrorCode, MoneyDto};
 
 const INSTITUTION_MAX: usize = 100;
 const NUMBER_MASK_MAX: usize = 20;
-/// A mask shows at most the last four digits of a number, never the number itself.
+/// A mask shows at most the last four digits (of any script) of a number, never the number.
 const NUMBER_MASK_DIGITS: usize = 4;
 /// Balances count every live leg, at any date (Q-household-accounts-2).
 const ALL_DATES: &str = "9999-12-31";
@@ -252,7 +252,7 @@ fn account_from_input(
     let institution = f.optional("institution", input.institution.as_deref(), INSTITUTION_MAX);
     let number_mask = f.optional("numberMask", input.number_mask.as_deref(), NUMBER_MASK_MAX);
     if let Some(mask) = &number_mask {
-        if mask.chars().filter(char::is_ascii_digit).count() > NUMBER_MASK_DIGITS {
+        if mask.chars().filter(|c| c.is_numeric()).count() > NUMBER_MASK_DIGITS {
             f.add("numberMask", "fullNumber");
         }
     }
@@ -297,7 +297,12 @@ fn account_from_input(
         kind: wire(input.kind),
         currency_code: currency.code.to_string(),
         scope: wire(scope),
-        owner_member_id: (scope == AccountScope::Personal).then(|| me.to_owned()),
+        // A personal account keeps its owner; a new one (or one becoming personal) is mine.
+        owner_member_id: (scope == AccountScope::Personal).then(|| {
+            existing
+                .and_then(|a| a.owner_member_id.clone())
+                .unwrap_or_else(|| me.to_owned())
+        }),
         visibility: wire(visibility),
         institution,
         number_mask,

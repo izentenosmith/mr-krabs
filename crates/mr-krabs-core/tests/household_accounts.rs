@@ -1047,3 +1047,40 @@ fn c24_eur_opening_balance_resent_as_its_display_text_is_no_change() {
     );
     assert_eq!(env.log_len(), logged);
 }
+
+// ───────────────────────────── remediation (ledger iteration 2) ─────────────────────────────
+
+#[test]
+fn f2_number_mask_with_more_than_four_digits_of_any_script_is_refused() {
+    let mut env = Env::new("f2");
+    env.onboard();
+    let before = env.state();
+    let mut input = checking(None);
+    input["numberMask"] = json!("４１１１ １１１１ １１１１ １１１１");
+    let e = env.err("account_create", json!({ "input": input }));
+    field_error(&e, ErrorCode::Validation, "numberMask", "errors.field.fullNumber");
+    assert_eq!(env.state(), before);
+}
+
+#[test]
+fn f4_account_update_keeps_the_owner_of_an_existing_personal_account() {
+    let mut env = Env::new("f4");
+    let household = env.onboard()["id"].as_str().unwrap().to_owned();
+    let mut input = checking(None);
+    input["scope"] = json!("personal");
+    let id = env.create_account(input.clone())["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    env.exec(&format!(
+        "INSERT INTO member (id, household_id, display_name, hlc, hlc_device) \
+         VALUES ('{}', '{household}', 'Otra', 1, 'dev-b');
+         UPDATE account SET owner_member_id = '{}' WHERE id = '{id}';",
+        uuid(),
+        uuid()
+    ));
+    input["name"] = json!("Renombrada");
+    let a = env.ok("account_update", json!({ "id": id, "input": input }));
+    assert_eq!(a["ownerMemberId"], uuid());
+    assert_eq!(a["name"], "Renombrada");
+}
