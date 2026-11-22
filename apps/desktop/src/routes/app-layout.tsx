@@ -2,6 +2,7 @@ import { Link, Outlet } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
 import { AccountsSidebarContainer } from "@/features/accounts/AccountsSidebarContainer";
+import { LanguageToggle } from "@/features/shell/LanguageToggle";
 import { navItems } from "@/routes/nav";
 
 /** App shell: 240px sidebar (brand, nav, accounts) and the content outlet (MASTER §5). */
@@ -31,6 +32,7 @@ export function AppLayout() {
           </ul>
         </nav>
         <AccountsSidebarContainer />
+        <LanguageToggle className="mt-auto self-end" />
       </aside>
       <main className="flex min-w-0 flex-1 flex-col gap-6 p-8">
         <Outlet />

@@ -34,6 +34,9 @@ export const en: Messages<typeof esCL> = {
     bootstrapError: "We couldn't start the app",
     retry: "Retry",
   },
+  language: {
+    label: "Language",
+  },
   onboarding: {
     title: "Welcome to Mr Krabs",
     description: "Create your household to begin. Everything stays on this device.",

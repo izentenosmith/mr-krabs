@@ -30,6 +30,9 @@ export const esCL = {
     bootstrapError: "No pudimos iniciar la app",
     retry: "Reintentar",
   },
+  language: {
+    label: "Idioma",
+  },
   onboarding: {
     title: "Te damos la bienvenida a Mr Krabs",
     description: "Crea tu hogar para empezar. Todo queda en este dispositivo.",
