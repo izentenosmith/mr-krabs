@@ -6,6 +6,7 @@
 
 pub mod balance;
 pub mod category;
+mod date;
 pub mod entry;
 pub mod ledger;
 
