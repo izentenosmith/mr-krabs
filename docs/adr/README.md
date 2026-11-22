@@ -11,5 +11,6 @@
 | [0007](0007-devserver-http-shell.md) | Dev-only HTTP shell for Docker development | Accepted |
 | [0008](0008-deterministic-ids-for-seeded-rows.md) | Deterministic ids for seeded rows | Accepted |
 | [0009](0009-posting-legs-and-per-leg-status.md) | Posting legs and per-leg status | Accepted |
+| [0010](0010-change-log-from-m1.md) | Change log written from M1 | Accepted |
 
 Template: Context → Decision → Consequences.

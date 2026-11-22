@@ -69,7 +69,7 @@ Run fmt, clippy and the tests for anything you touch before committing.
 2. Method on `mr_krabs_core::App`, plus DTOs in `api.rs` (`#[serde(rename_all = "camelCase")]`).
 3. Register it in `commands.rs` (`dispatch` and `COMMANDS`); the catalogue test checks every listed command dispatches.
 4. Add a `#[tauri::command]` in `apps/desktop/src-tauri/src/lib.rs` and list it in `generate_handler!`.
-5. Add types and a method to `packages/api-client` (`types.ts`, `createApi`); types are hand-written until tauri-specta lands in M1.
+5. Add types and a method to `packages/api-client` (`types.ts`, `createApi`); types are hand-written until the specta bindings land in M1 (`feat/api-contract`).
 6. UI: presentational component taking DTOs/callbacks, plus a container using TanStack Query. Strings go in both `src/i18n/es-CL.ts` and `en.ts`. Add Vitest + Testing Library tests.
 
 ## Conventions
