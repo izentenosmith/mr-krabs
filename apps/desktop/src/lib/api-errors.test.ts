@@ -1,6 +1,8 @@
 import { ApiError } from "@mr-krabs/api-client";
 
-import { applyServerErrors, errorCopyKey, shouldRetry } from "./api-errors";
+import i18n from "@/i18n";
+
+import { applyServerErrors, errorCopyKey, fieldMessage, shouldRetry } from "./api-errors";
 
 describe("applyServerErrors", () => {
   it("puts mapped fields on their form fields and nothing at form level", () => {
@@ -49,5 +51,15 @@ describe("shouldRetry", () => {
     for (const code of ["NOT_IMPLEMENTED", "VALIDATION", "NOT_FOUND", "INTERNAL"] as const) {
       expect(shouldRetry(0, new ApiError(code, "x"))).toBe(false);
     }
+  });
+});
+
+describe("fieldMessage", () => {
+  it("renders only errors.field.* keys; any other key gets the generic copy (S7 F17)", () => {
+    const t = i18n.t.bind(i18n);
+    expect(fieldMessage(t, "errors.field.invalidAmount")).toBe("Monto no válido");
+    expect(fieldMessage(t, "tx.title")).toBe("Revisa este campo");
+    expect(fieldMessage(t, "errors")).toBe("Revisa este campo");
+    expect(fieldMessage(t, undefined)).toBeUndefined();
   });
 });
