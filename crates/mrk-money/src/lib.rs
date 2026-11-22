@@ -216,9 +216,10 @@ impl Money {
 /// Parses an amount written in Chilean format into minor units.
 ///
 /// * Thousands separator `.`, decimal separator `,` (`"1.234.567"`, `"12,50"`).
-/// * Accepts spaces, wrapping parentheses, then a leading `-`, then at most one currency
-///   marker of a built-in currency: its symbol (`$`, `US$`, `€`, `UF`) or ISO code (`CLP`),
-///   in any ASCII case. An ISO code may instead follow the number (`27.990 CLP`).
+/// * Accepts spaces, wrapping parentheses, then a leading `-`, then at most one marker of
+///   `currency` itself: its symbol (`$`, `US$`, `€`, `UF`) or ISO code (`CLP`), in any ASCII
+///   case. The ISO code may instead follow the number (`27.990 CLP`). Another currency's
+///   marker is an error (`€10` is not a CLP amount); no marker is fine.
 /// * Never rounds: more decimals than the currency allows is an error.
 pub fn parse_es_cl(input: &str, currency: Currency) -> Result<i64, MoneyError> {
     let minor_units = currency.minor_units;
@@ -234,7 +235,7 @@ pub fn parse_es_cl(input: &str, currency: Currency) -> Result<i64, MoneyError> {
         negative = !negative;
         s = rest.to_owned();
     }
-    let s = strip_currency_marker(&s);
+    let s = strip_currency_marker(&s, currency);
     if s.is_empty() {
         return Err(invalid());
     }
@@ -281,10 +282,11 @@ pub fn parse_es_cl(input: &str, currency: Currency) -> Result<i64, MoneyError> {
     i64::try_from(if negative { -value } else { value }).map_err(|_| MoneyError::Overflow)
 }
 
-/// Removes one built-in currency marker: a leading symbol or ISO code, or else a trailing
-/// ISO code. `s` has no whitespace, so symbols are compared without theirs (`"UF "` → `UF`).
-/// Anything else is left in place for the digit checks to reject.
-fn strip_currency_marker(s: &str) -> &str {
+/// Removes one marker of `currency`: a leading symbol or ISO code, or else a trailing ISO
+/// code. `s` has no whitespace, so the symbol is compared without its own (`"UF "` → `UF`).
+/// The longer marker is tried first, so neither can shadow the other. Anything else, another
+/// currency's marker included, is left in place for the digit checks to reject.
+fn strip_currency_marker(s: &str, currency: Currency) -> &str {
     fn strip_prefix_ci<'a>(s: &'a str, p: &str) -> Option<&'a str> {
         let head = s.get(..p.len())?;
         head.eq_ignore_ascii_case(p).then(|| &s[p.len()..])
@@ -295,20 +297,15 @@ fn strip_currency_marker(s: &str) -> &str {
         tail.eq_ignore_ascii_case(p).then(|| &s[..split])
     }
 
-    for c in Currency::BUILT_IN {
-        let symbol = c.symbol.trim();
-        for marker in [symbol, c.code.as_str()] {
-            if let Some(rest) = strip_prefix_ci(s, marker) {
-                return rest;
-            }
-        }
-    }
-    for c in Currency::BUILT_IN {
-        if let Some(rest) = strip_suffix_ci(s, c.code.as_str()) {
-            return rest;
-        }
-    }
-    s
+    let code = currency.code.as_str();
+    let mut markers = [currency.symbol.trim(), code];
+    markers.sort_by_key(|m| std::cmp::Reverse(m.len()));
+    markers
+        .into_iter()
+        .filter(|m| !m.is_empty())
+        .find_map(|m| strip_prefix_ci(s, m))
+        .or_else(|| strip_suffix_ci(s, code))
+        .unwrap_or(s)
 }
 
 /// Formats minor units in Chilean style: `$1.234.567`, `-US$12,50`, `UF 1.234,5678`.
