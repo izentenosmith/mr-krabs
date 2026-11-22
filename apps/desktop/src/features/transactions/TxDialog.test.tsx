@@ -136,4 +136,29 @@ describe("TxDialog", () => {
     expect(await d.findByRole("alert")).toHaveTextContent("La moneda no coincide con la de la cuenta.");
     expect(d.getByLabelText("Monto")).toHaveAttribute("aria-invalid", "true");
   });
+
+  it("editing a transaction whose category the picker can't show doesn't re-send it silently (X-13 F1)", async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const { d } = renderDialog({
+      mode: "edit",
+      onSubmit,
+      initial: {
+        id: "t1",
+        kind: "expense",
+        date: "2026-11-20",
+        description: "Feria",
+        memo: "",
+        accountId: "a1",
+        categoryId: "cx-archived",
+        toAccountId: null,
+        amount: { minor: "1", currency: "CLP", display: "$1" },
+        status: "pending",
+        deleted: false,
+      },
+    });
+    expect(d.getByLabelText("Categoría")).toHaveValue("");
+    fireEvent.click(d.getByRole("button", { name: "Guardar" }));
+    expect(await d.findByText("Este campo es obligatorio")).toBeInTheDocument();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
 });

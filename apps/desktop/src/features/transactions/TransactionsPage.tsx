@@ -8,6 +8,7 @@ import {
   ApiError,
   type NewTxInput,
   type TxDetailDto,
+  type CategoryKind,
   type TxRowDto,
   type View,
 } from "@mr-krabs/api-client";
@@ -33,6 +34,12 @@ const NO_ROWS: TxRowDto[] = [];
 // M1 has one member, so the combined view is everything (Q1); the lens switcher (M3) sets it.
 const VIEW: View = "combined";
 const UNDO_MS = 8000; // MASTER §7.2 undo toast
+
+/** One kind's live category tree for the picker (REQ-13). */
+const treeQuery = (kind: CategoryKind) => ({
+  queryKey: ["categories", "tree", kind] as const,
+  queryFn: () => api.category.tree({ kind }),
+});
 
 /** A failed load: the code's copy (MASTER §7.1) and a retry. */
 function LoadError({ error, onRetry }: { error: unknown; onRetry: () => void }) {
@@ -66,14 +73,11 @@ export function TransactionsPage({ accountId, onAccountIdChange }: TransactionsP
   });
   const accountOptions = accounts.data?.map((s) => s.account) ?? [];
   // The category picker's live trees, one per kind (REQ-13).
-  const expenseTree = useQuery({
-    queryKey: ["categories", "tree", "expense"],
-    queryFn: () => api.category.tree({ kind: "expense" }),
-  });
-  const incomeTree = useQuery({
-    queryKey: ["categories", "tree", "income"],
-    queryFn: () => api.category.tree({ kind: "income" }),
-  });
+  const expenseTree = useQuery(treeQuery("expense"));
+  const incomeTree = useQuery(treeQuery("income"));
+  // A dialog opens only once the trees have answered, so its category defaults and the
+  // type-switch rule see the real lists (X-13 F2).
+  const treesSettled = !expenseTree.isPending && !incomeTree.isPending;
   const categories = useMemo<CategoryOptions>(
     () => ({
       expense: categoryOptions(expenseTree.data ?? []),
@@ -112,10 +116,15 @@ export function TransactionsPage({ accountId, onAccountIdChange }: TransactionsP
   const open = async (row: TxRowDto) => {
     const key = ++lastOpen.current;
     try {
-      const detail = await queryClient.fetchQuery({
-        queryKey: ["tx", "detail", row.id],
-        queryFn: () => api.tx.get(row.id),
-      });
+      const [detail] = await Promise.all([
+        queryClient.fetchQuery({
+          queryKey: ["tx", "detail", row.id],
+          queryFn: () => api.tx.get(row.id),
+        }),
+        // A failed tree still lets the dialog open; the page alert says what failed.
+        queryClient.ensureQueryData(treeQuery("expense")).catch(() => undefined),
+        queryClient.ensureQueryData(treeQuery("income")).catch(() => undefined),
+      ]);
       if (key === lastOpen.current) setDialog({ mode: "edit", detail, key });
     } catch (raw) {
       if (key === lastOpen.current) toastError(raw); // an abandoned opening stays silent (F44)
@@ -176,7 +185,7 @@ export function TransactionsPage({ accountId, onAccountIdChange }: TransactionsP
           <option value="">{t("tx.allAccounts")}</option>
           <AccountOptions accounts={accountOptions} />
         </select>
-        <Button onClick={openCreate} disabled={notAvailable}>
+        <Button onClick={openCreate} disabled={notAvailable || !treesSettled}>
           <Plus aria-hidden />
           {t("tx.new")}
         </Button>

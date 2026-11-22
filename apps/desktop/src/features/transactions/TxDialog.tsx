@@ -93,7 +93,7 @@ function today() {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-function defaults(initial?: TxDetailDto): FormValues {
+function defaults(categories: CategoryOptions, initial?: TxDetailDto): FormValues {
   if (!initial || initial.kind === "opening_balance") {
     return {
       type: "expense",
@@ -109,7 +109,13 @@ function defaults(initial?: TxDetailDto): FormValues {
   return {
     type: initial.kind,
     accountId: initial.accountId,
-    categoryId: initial.categoryId ?? "",
+    // Only a category the picker can show (an archived or missing one would be re-sent
+    // invisibly); otherwise the user picks again (X-13 F1).
+    categoryId: (initial.kind === "income" ? categories.income : categories.expense).some(
+      (c) => c.id === initial.categoryId,
+    )
+      ? (initial.categoryId ?? "")
+      : "",
     toAccountId: initial.toAccountId ?? "",
     // The detail amount is positive and in Rust's es-CL text, which Rust parses back
     // (never the row's signed amount, X-7).
@@ -184,7 +190,7 @@ export function TxDialog({
   const { t } = useTranslation();
   const { register, handleSubmit, watch, setError, setValue, getValues, formState } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: defaults(initial),
+    defaultValues: defaults(categories, initial),
   });
   // Messages are i18n keys (ours or the server's); `Field` wires id and aria (MASTER §7.1).
   const err = (field: TxField) => fieldMessage(t, formState.errors[field]?.message);

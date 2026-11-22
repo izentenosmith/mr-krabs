@@ -184,7 +184,10 @@ function renderPage(props: { accountId?: string; onAccountIdChange?: (id?: strin
 }
 
 async function openNew() {
-  fireEvent.click(await screen.findByRole("button", { name: "Nuevo" }));
+  // "Nuevo" waits for the category trees (X-13 F2).
+  const button = await screen.findByRole("button", { name: "Nuevo" });
+  await waitFor(() => expect(button).toBeEnabled());
+  fireEvent.click(button);
   return within(await screen.findByRole("dialog", { name: "Nueva transacción" }));
 }
 
