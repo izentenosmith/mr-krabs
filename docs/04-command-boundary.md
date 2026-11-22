@@ -69,6 +69,7 @@ Naming: `<area>_<verb>`. All are `async`. Inputs/outputs abbreviated. Implemente
 | | `account_create` / `account_update` / `account_archive` | `AccountInput` | `AccountDto` |
 | **Categories** | `category_tree` | `{ kind? }` | `CategoryNodeDto[]` |
 | | `category_create` / `category_update` / `category_archive` / `category_move` | … | `CategoryDto` |
+| | `category_delete` | `{ id, merge_into_id? }` (required when the category has transactions or budgets) | `()` |
 | **Transactions** | `tx_list` | `TxQuery { view, account_id?, category_id?, from?, to?, text?, status?, cursor, limit }` | `Page<TxRowDto>` |
 | | `tx_get` | `{ id }` | `TxDetailDto` |
 | | `tx_create` | `NewTxInput` (expense/income/transfer/split, sharing, attribution, tags) | `TxDetailDto` |
@@ -77,7 +78,11 @@ Naming: `<area>_<verb>`. All are `async`. Inputs/outputs abbreviated. Implemente
 | | `tx_set_status` | `{ ids, status }` | `()` |
 | | `installment_plan_preview` | `{ total, n, rate, first_due_month }` | `InstallmentDto[]` |
 | **Recurring** | `recurring_list` / `recurring_upsert` / `recurring_post_due` | … | `RecurringDto[]` |
+| | `recurring_detect` | `{ from?, to? }` | `RecurringSuggestionDto[]` |
+| | `recurring_since_last_run` | – | `DueOccurrenceDto[]` |
 | **Rules** | `payee_rule_list` / `payee_rule_upsert` / `payee_rule_test` | … | … |
+| | `payee_rule_apply` | `{ rule_id, query: TxQuery }` (bulk edit of existing transactions) | `{ updated }` |
+| **Learning** | `learned_list` / `learned_forget` | … | `LearnedMappingDto[]` (rules, remembered category mappings, categorizer associations) |
 | **Budgets** | `budget_matrix` | `{ year, view }` | `BudgetMatrixDto` (rows × months × planned/actual/diff, subtotals, cash flow, total expenses) |
 | | `budget_set` | `{ period, category_id, scope, amount }` | `BudgetCellDto` |
 | | `budget_copy_month` | `{ from, to }` | `()` |
@@ -88,7 +93,8 @@ Naming: `<area>_<verb>`. All are `async`. Inputs/outputs abbreviated. Implemente
 | | `report_upcoming` | `{ days }` | `UpcomingDto` (bills, installments, card due dates, expected income) |
 | | `settle_up_summary` | – | `SettleUpDto` |
 | **Import** | `import_detect` | `{ file_path }` (path from shell dialog) | `DetectDto` (format, bank guess, profiles) |
-| | `import_stage` | `{ file_path, account_id, profile_id?, extractor: "auto"\|"mapping"\|"builtin"\|"ai" }` | `ImportBatchDto` |
+| | `import_stage` | `{ file_path, account_id, profile_id?, extractor: "auto"\|"mapping"\|"workbook"\|"builtin"\|"ai", year? }` | `ImportBatchDto` |
+| | `import_unknown_categories` / `import_resolve_category` | `{ batch_id }` / `{ batch_id, name, category_id? \| create: CategoryInput }` | `UnknownCategoryDto[]` |
 | | `import_rows` | `{ batch_id }` | `ImportRowDto[]` |
 | | `import_row_update` | `{ row_id, patch }` | `ImportRowDto` |
 | | `import_commit` / `import_discard` / `import_revert` | `{ batch_id }` | `ImportResultDto` |
