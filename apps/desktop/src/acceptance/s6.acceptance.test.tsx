@@ -133,10 +133,9 @@ describe("S6 accounts sidebar", () => {
     // No client formatting of `minor` ("1") anywhere.
     expect(s.queryByText(/\$1$/)).not.toBeInTheDocument();
 
-    const captions = ["Bancos y efectivo", "Tarjetas de crédito", "Créditos", "Inversiones", "Otros"]
-      .map((c) => s.queryByText(c))
-      .filter((el): el is HTMLElement => el !== null)
-      .map((el) => el.textContent);
+    // Groups in DOM order, by their accessible names.
+    const groups = s.getAllByRole("group").map((g) => g.getAttribute("aria-labelledby"));
+    const captions = groups.map((id) => document.getElementById(id ?? "")?.textContent);
     expect(captions).toEqual(["Bancos y efectivo", "Tarjetas de crédito", "Inversiones"]);
 
     const bank = s.getByRole("group", { name: "Bancos y efectivo" });
