@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { CircleAlert, Hourglass, Inbox, Plus } from "lucide-react";
@@ -28,6 +28,7 @@ export interface TransactionsPageProps {
 }
 
 const PAGE_SIZE = 100; // design Q8
+const NO_ROWS: TxRowDto[] = [];
 // M1 has one member, so the combined view is everything (Q1); the lens switcher (M3) sets it.
 const VIEW: View = "combined";
 const UNDO_MS = 8000; // MASTER §7.2 undo toast
@@ -77,7 +78,8 @@ export function TransactionsPage({
     initialPageParam: null as string | null,
     getNextPageParam: (last) => last.nextCursor,
   });
-  const rows = list.data?.pages.flatMap((p) => p.items) ?? [];
+  // Stable across renders that don't change the pages, so the table keeps its row model (F31).
+  const rows = useMemo(() => list.data?.pages.flatMap((p) => p.items) ?? NO_ROWS, [list.data]);
   // Q12: the core answers NOT_IMPLEMENTED until the transactions slice lands.
   const notAvailable = list.error && ApiError.from(list.error).code === "NOT_IMPLEMENTED";
 
