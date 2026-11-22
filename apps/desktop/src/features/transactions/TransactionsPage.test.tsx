@@ -73,8 +73,11 @@ const row: TxRowDto = {
   status: "pending",
 };
 
+let lastClient: QueryClient;
+
 function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  lastClient = client;
   render(
     <QueryClientProvider client={client}>
       <TransactionsPage onAccountIdChange={vi.fn()} categories={{ expense: [], income: [] }} />
@@ -189,5 +192,32 @@ describe("TransactionsPage dialog identity", () => {
     await new Promise((r) => setTimeout(r, 20));
     expect(screen.getByRole("dialog", { name: "Nueva transacción" })).toBeInTheDocument();
     expect(d.getByLabelText("Monto")).toHaveValue("8");
+  });
+});
+
+describe("TransactionsPage writes", () => {
+  beforeEach(() => {
+    api.account.list.mockResolvedValue(accounts);
+    api.tx.list.mockResolvedValue({ items: [row], nextCursor: null });
+    api.tx.create.mockResolvedValue(detail("t9", "x"));
+  });
+
+  it("a write refreshes the accounts queries the sidebar shares (F27)", async () => {
+    renderPage();
+    await screen.findByRole("row", { name: /Feria Prueba/ });
+    await waitFor(() => expect(api.account.list).toHaveBeenCalledTimes(1));
+    expect(api.account.list).toHaveBeenCalledWith({ view: "combined", includeArchived: false });
+    // The sidebar's archived view (S6) shares the ["accounts"] prefix.
+    const archivedKey = ["accounts", "list", { includeArchived: true }];
+    lastClient.setQueryData(archivedKey, []);
+    fireEvent.click(screen.getByRole("button", { name: "Nuevo" }));
+    const d = within(await screen.findByRole("dialog", { name: "Nueva transacción" }));
+    fireEvent.click(d.getByRole("radio", { name: "Transferencia" }));
+    fireEvent.change(d.getByLabelText("Desde"), { target: { value: "a1" } });
+    fireEvent.change(d.getByLabelText("Hacia"), { target: { value: "a1" } });
+    fireEvent.change(d.getByLabelText("Monto"), { target: { value: "5" } });
+    fireEvent.click(d.getByRole("button", { name: "Guardar" }));
+    await waitFor(() => expect(api.account.list).toHaveBeenCalledTimes(2));
+    expect(lastClient.getQueryState(archivedKey)?.isInvalidated).toBe(true);
   });
 });

@@ -31,6 +31,8 @@ const PAGE_SIZE = 100; // design Q8
 // M1 has one member, so the combined view is everything (Q1); the lens switcher (M3) sets it.
 const VIEW: View = "combined";
 const UNDO_MS = 8000; // MASTER §7.2 undo toast
+// The accounts sidebar's query prefix (S6 `accountsKey`); import it once S6 is on dev.
+const ACCOUNTS_KEY = ["accounts"] as const;
 
 /** The open dialog; `key` identifies one opening so late answers can't touch a newer one. */
 type OpenDialog = ({ mode: "create" } | { mode: "edit"; detail: TxDetailDto }) & { key: number };
@@ -47,8 +49,9 @@ export function TransactionsPage({
   const lastOpen = useRef(0);
   const close = (key: number) => setDialog((d) => (d?.key === key ? null : d));
   const accounts = useQuery({
-    queryKey: ["account", "list", VIEW],
-    queryFn: () => api.account.list({ view: VIEW }),
+    // Same key and arguments as the accounts sidebar (S6), so both share one cache entry.
+    queryKey: [...ACCOUNTS_KEY, "list", { includeArchived: false }],
+    queryFn: () => api.account.list({ view: VIEW, includeArchived: false }),
   });
   const accountOptions = accounts.data?.map((s) => s.account) ?? [];
   const list = useInfiniteQuery({
@@ -62,11 +65,11 @@ export function TransactionsPage({
   // Q12: the core answers NOT_IMPLEMENTED until the transactions slice lands.
   const notAvailable = list.error && ApiError.from(list.error).code === "NOT_IMPLEMENTED";
 
-  // Balances and lists change with every write (sidebar balances live under "account").
+  // Balances and lists change with every write (sidebar balances live under "accounts").
   const refresh = () =>
     Promise.all([
       queryClient.invalidateQueries({ queryKey: ["tx"] }),
-      queryClient.invalidateQueries({ queryKey: ["account"] }),
+      queryClient.invalidateQueries({ queryKey: ACCOUNTS_KEY }),
     ]);
 
   // Failures of actions outside a form (MASTER §7.2): an error toast with the code's copy.
