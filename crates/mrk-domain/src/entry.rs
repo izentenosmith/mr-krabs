@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use mrk_money::{CurrencyCode, Money};
 
-use crate::date::is_civil_date;
+use crate::date::validate_civil_date;
 use crate::ledger::{DomainError, EntryKind, Leg, Posting, classify, validate_balanced};
 
 /// The type the user chose for a transaction. Expense, income and transfer are re-derived
@@ -157,9 +157,7 @@ impl NewTx {
                 amount,
                 date,
             } => {
-                if !is_civil_date(date) {
-                    return Err(DomainError::InvalidDate(date.clone()));
-                }
+                validate_civil_date(date)?;
                 if amount.is_zero() {
                     return Err(DomainError::ZeroAmount);
                 }

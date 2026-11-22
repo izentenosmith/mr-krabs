@@ -1,9 +1,26 @@
 //! Civil dates as the ledger stores them: `YYYY-MM-DD` text (CLAUDE.md conventions).
 
-/// True for a real calendar date written `YYYY-MM-DD`: four-digit year, month 01–12, and a
-/// day that exists in that month (leap years included). In this shape string order is date
-/// order, which is what balances and the store's `entry_date` rely on.
-pub(crate) fn is_civil_date(date: &str) -> bool {
+use crate::ledger::DomainError;
+
+/// Checks that `date` is a real calendar date written `YYYY-MM-DD`: four ASCII digits for the
+/// year (0000–9999, proleptic Gregorian), month 01–12, and a day that exists in that month
+/// (29 February only in leap years: divisible by 4, except centuries not divisible by 400).
+/// In this shape string order is date order, which balances and the store's `entry_date`
+/// rely on. Anything else is `Err(DomainError::InvalidDate(date))`, which core maps to
+/// `VALIDATION` with `fields: { date: "errors.field.invalidDate" }` (X-8).
+///
+/// This is the one date rule of the ledger: opening-balance dates and `as_of` already go
+/// through it, and the transactions slice must call it for every `entry_date` it writes,
+/// new or edited, before the entry reaches the store (X-6).
+pub fn validate_civil_date(date: &str) -> Result<(), DomainError> {
+    if is_civil_date(date) {
+        Ok(())
+    } else {
+        Err(DomainError::InvalidDate(date.to_owned()))
+    }
+}
+
+fn is_civil_date(date: &str) -> bool {
     let b = date.as_bytes();
     if b.len() != 10 || b[4] != b'-' || b[7] != b'-' {
         return false;
