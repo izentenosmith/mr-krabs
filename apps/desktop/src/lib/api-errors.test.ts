@@ -111,7 +111,8 @@ describe("errors.field copy (X-13)", () => {
     "notAllowed",
     "fullNumber",
     "lockedByPostings",
-    // The transactions commands (S5).
+    // The transactions commands (S5, `feat/transactions`); `notFound` was announced for them
+    // but no command sends it yet — its copy is ready for when one does.
     "sameAccount",
     "wrongKind",
     "archived",
