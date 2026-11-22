@@ -202,12 +202,12 @@ impl TxType {
 impl JournalEntry {
     /// The account leg is an account; the counter leg is the kind the type needs.
     fn legs_fit_type(&self) -> bool {
-        let counter_fits = match (self.tx_type, &self.counter_leg.leg) {
-            (TxType::Expense | TxType::Income, Leg::Category(_)) => true,
-            (TxType::Transfer, Leg::Account(_)) => true,
-            (TxType::OpeningBalance, Leg::FxTrading) => true,
-            _ => false,
-        };
+        let counter_fits = matches!(
+            (self.tx_type, &self.counter_leg.leg),
+            (TxType::Expense | TxType::Income, Leg::Category(_))
+                | (TxType::Transfer, Leg::Account(_))
+                | (TxType::OpeningBalance, Leg::FxTrading)
+        );
         matches!(self.account_leg.leg, Leg::Account(_)) && counter_fits
     }
 
