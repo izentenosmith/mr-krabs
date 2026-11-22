@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 
 import { StateBlock } from "./StateBlock";
 import { TransactionsTable } from "./TransactionsTable";
+import { errorCopyKey } from "./txErrors";
 import { TxDialog } from "./TxDialog";
 
 export interface CategoryOption {
@@ -70,6 +71,9 @@ export function TransactionsPage({
       queryClient.invalidateQueries({ queryKey: ["account"] }),
     ]);
 
+  // Failures of actions outside a form (MASTER §7.2): an error toast with the code's copy.
+  const toastError = (raw: unknown) => toast.error(t(errorCopyKey(ApiError.from(raw).code)));
+
   const open = async (row: TxRowDto) => {
     const detail = await queryClient.fetchQuery({
       queryKey: ["tx", "detail", row.id],
@@ -86,12 +90,22 @@ export function TransactionsPage({
   };
 
   const restore = async (id: string) => {
-    await api.tx.restore(id);
+    try {
+      await api.tx.restore(id);
+    } catch (raw) {
+      toastError(raw);
+      return;
+    }
     void refresh();
   };
 
   const remove = async (id: string) => {
-    await api.tx.delete(id);
+    try {
+      await api.tx.delete(id);
+    } catch (raw) {
+      toastError(raw); // the dialog stays open, nothing changed
+      return;
+    }
     setDialog(null);
     void refresh();
     toast(t("tx.deleted"), {
