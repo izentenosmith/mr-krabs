@@ -64,9 +64,11 @@ type FormValues = z.infer<typeof schema>;
 export interface CategoryOption {
   id: string;
   name: string;
+  /** The root it belongs to, shown as an `<optgroup>`; none for a childless root. */
+  group?: string;
 }
 
-/** Category choices per transaction type, until `category_tree` lands (DEC-13). */
+/** Category choices per transaction type, from `category_tree` (REQ-13). */
 export interface CategoryOptions {
   expense: CategoryOption[];
   income: CategoryOption[];
@@ -132,6 +134,31 @@ function toInput(v: FormValues, accounts: AccountDto[]): NewTxInput {
     return { type: "transfer", fromAccountId: v.accountId, toAccountId: v.toAccountId, amount, ...text };
   }
   return { type: v.type, accountId: v.accountId, categoryId: v.categoryId, amount, ...text };
+}
+
+/** Options in order, consecutive ones of the same root inside one `<optgroup>`. */
+function CategoryOptionList({ options }: { options: CategoryOption[] }) {
+  const runs: Array<{ group?: string; items: CategoryOption[] }> = [];
+  for (const o of options) {
+    const last = runs.at(-1);
+    if (last && o.group && last.group === o.group) last.items.push(o);
+    else runs.push({ group: o.group, items: [o] });
+  }
+  const opts = (items: CategoryOption[]) =>
+    items.map((c) => (
+      <option key={c.id} value={c.id}>
+        {c.name}
+      </option>
+    ));
+  return runs.map((run, i) =>
+    run.group ? (
+      <optgroup key={`${run.group}-${i}`} label={run.group}>
+        {opts(run.items)}
+      </optgroup>
+    ) : (
+      opts(run.items)
+    ),
+  );
 }
 
 /** `<option>`s for the household's accounts. */
@@ -234,11 +261,7 @@ export function TxDialog({
             <Field key="category" label={t("tx.form.category")} error={err("categoryId")}>
               <select {...register("categoryId")} className={controlClass}>
                 <option value="">{t("tx.form.choose")}</option>
-                {categoryOptions.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
+                <CategoryOptionList options={categoryOptions} />
               </select>
             </Field>
           )}

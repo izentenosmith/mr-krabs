@@ -19,15 +19,13 @@ import { accountsKey } from "@/features/accounts/AccountsSidebarContainer";
 import { errorCopyKey, isNotImplemented } from "@/lib/api-errors";
 
 import { StateBlock } from "./StateBlock";
+import { categoryOptions } from "./categoryOptions";
 import { TransactionsTable } from "./TransactionsTable";
 import { AccountOptions, TxDialog, type CategoryOptions } from "./TxDialog";
-
-export type { CategoryOption, CategoryOptions } from "./TxDialog";
 
 export interface TransactionsPageProps {
   accountId?: string;
   onAccountIdChange: (accountId: string | undefined) => void;
-  categories: CategoryOptions;
 }
 
 const PAGE_SIZE = 100; // design Q8
@@ -54,11 +52,7 @@ function LoadError({ error, onRetry }: { error: unknown; onRetry: () => void }) 
 /** The open dialog; `key` identifies one opening so late answers can't touch a newer one. */
 type OpenDialog = ({ mode: "create" } | { mode: "edit"; detail: TxDetailDto }) & { key: number };
 
-export function TransactionsPage({
-  accountId,
-  onAccountIdChange,
-  categories,
-}: TransactionsPageProps) {
+export function TransactionsPage({ accountId, onAccountIdChange }: TransactionsPageProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [dialog, setDialog] = useState<OpenDialog | null>(null);
@@ -71,6 +65,22 @@ export function TransactionsPage({
     queryFn: () => api.account.list({ view: VIEW, includeArchived: false }),
   });
   const accountOptions = accounts.data?.map((s) => s.account) ?? [];
+  // The category picker's live trees, one per kind (REQ-13).
+  const expenseTree = useQuery({
+    queryKey: ["categories", "tree", "expense"],
+    queryFn: () => api.category.tree({ kind: "expense" }),
+  });
+  const incomeTree = useQuery({
+    queryKey: ["categories", "tree", "income"],
+    queryFn: () => api.category.tree({ kind: "income" }),
+  });
+  const categories = useMemo<CategoryOptions>(
+    () => ({
+      expense: categoryOptions(expenseTree.data ?? []),
+      income: categoryOptions(incomeTree.data ?? []),
+    }),
+    [expenseTree.data, incomeTree.data],
+  );
   const list = useInfiniteQuery({
     queryKey: ["tx", "list", { accountId }],
     queryFn: ({ pageParam }) =>

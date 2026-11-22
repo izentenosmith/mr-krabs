@@ -81,7 +81,7 @@ function renderPage() {
   lastClient = client;
   render(
     <QueryClientProvider client={client}>
-      <TransactionsPage onAccountIdChange={vi.fn()} categories={{ expense: [], income: [] }} />
+      <TransactionsPage onAccountIdChange={vi.fn()} />
       <Toaster />
     </QueryClientProvider>,
   );
@@ -271,7 +271,7 @@ describe("TransactionsPage filter", () => {
         <TransactionsPage
           accountId={accountId}
           onAccountIdChange={vi.fn()}
-          categories={{ expense: [], income: [] }}
+         
         />
       </QueryClientProvider>
     );
@@ -344,7 +344,7 @@ describe("TransactionsPage with the app's retry policy", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: shouldRetry } } });
     render(
       <QueryClientProvider client={client}>
-        <TransactionsPage onAccountIdChange={vi.fn()} categories={{ expense: [], income: [] }} />
+        <TransactionsPage onAccountIdChange={vi.fn()} />
       </QueryClientProvider>,
     );
     expect(await screen.findByText("Aún no disponible", {}, { timeout: 500 })).toBeInTheDocument();
