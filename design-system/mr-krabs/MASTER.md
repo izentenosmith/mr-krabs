@@ -178,6 +178,13 @@ Focus ring always visible: `ring-[3px] ring-ring/50` (Tailwind `focus-visible:`)
   (`text-xl font-semibold`) and a one-line `muted-foreground` description.
 - Fields stacked, 16px apart; one primary full-width button "Comenzar".
 
+### 5.3 Language toggle
+- The UI language (es-CL / en) is a per-device preference (DEC-16). It defaults to the household's locale, is kept on this device only, and is never synced. Money keeps the es-CL format, and category names stay as seeded.
+- **Sidebar footer:** a small `ToggleGroup` with two items, `ES` and `EN`, on the sync-status line at the bottom of the sidebar, right-aligned (`text-xs`, ghost, no fill on the inactive item). The group's `aria-label` is "Idioma" in es-CL and "Language" in en. Each item's accessible name is the full language name ("Español", "English"), and the item labels are not translated.
+- **Onboarding:** the same group, as a top-right ghost control above the card, so the language is chosen before any typing.
+- It switches at once (no reload, no confirmation, no toast), and keyboard focus stays on the toggle.
+- Not in the command palette or the toolbar.
+
 ## 6. Motion
 
 - CSS transitions only (no animation library).
