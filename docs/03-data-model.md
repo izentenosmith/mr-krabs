@@ -1,6 +1,6 @@
 # 03 · Data Model
 
-The authoritative schema is the migrations in [`crates/mrk-store/migrations/`](../crates/mrk-store/migrations/), applied in order: `0001_init.sql`, then `0002_ledger_legs_and_category_keys.sql`. 0002 implements the accepted schema review in [`db-review/proposal/proposal.md`](db-review/proposal/proposal.md). This document explains the schema and the Rust domain types that sit on top. Some sections below still describe 0001 and are updated with the proposal's docs step.
+The authoritative schema is the migrations in [`crates/mrk-store/migrations/`](../crates/mrk-store/migrations/), applied in order: `0001_init.sql`, then `0002_ledger_legs_and_category_keys.sql`. 0002 implements the accepted schema review in [`db-review/proposal/proposal.md`](db-review/proposal/proposal.md). This document explains the schema (v2) and the Rust domain types that sit on top.
 
 ## Principles
 
@@ -8,7 +8,8 @@ The authoritative schema is the migrations in [`crates/mrk-store/migrations/`](.
 2. **Double entry.** A user-facing *transaction* is a `journal_entry` with ≥ 2 `posting`s. Category legs act as nominal (income/expense) accounts. Per currency, postings sum to **zero** — enforced in Rust before every write.
 3. **Integer money.** `amount_minor: i64` + `currency_code`. CLP has 0 minor units, USD 2, UF (`CLF`) 4.
 4. **SQLite is dumb storage.** Only `PRIMARY KEY`, `FOREIGN KEY`, `UNIQUE`, `NOT NULL` and simple `CHECK` guards. No triggers/views/procedures.
-5. **Sync-ready from day one.** UUIDv7 IDs, `hlc`/`hlc_device`/`deleted` on every replicated row, append-only `change_log`.
+5. **Sync-ready from day one.** UUIDv7 IDs (UUIDv5 for seeded rows, [ADR-0008](adr/0008-deterministic-ids-for-seeded-rows.md)), `hlc`/`hlc_device`/`deleted` on every replicated row, append-only `change_log`.
+6. **User data vs code-owned lists.** Categories, tags, payees and rules are user data (synced tables). Account kinds and entry kinds are code-owned lists stored in `account_kind` / `entry_kind`: installed by migrations, identical on every device at the same schema version, never synced. Closed domains (leg type, statuses, sources) are `CHECK` lists.
 
 ## Entity–relationship diagram
 
@@ -19,10 +20,14 @@ erDiagram
     MEMBER ||--o{ ACCOUNT : "owns (personal)"
     CURRENCY ||--o{ ACCOUNT : denominates
     CURRENCY ||--o{ FX_RATE : "base/quote"
-    ACCOUNT ||--o{ POSTING : "asset/liability leg"
-    CATEGORY ||--o{ POSTING : "income/expense leg"
-    CATEGORY ||--o{ CATEGORY : "group → child"
-    JOURNAL_ENTRY ||--|{ POSTING : "has ≥2 legs"
+    ACCOUNT_KIND ||--o{ ACCOUNT : classifies
+    ACCOUNT ||--o{ POSTING : "account leg"
+    CATEGORY ||--o{ POSTING : "category leg"
+    CATEGORY |o--o{ CATEGORY : "parent → child (any depth)"
+    CATEGORY |o--o{ CATEGORY : "merged into"
+    ENTRY_KIND ||--o{ JOURNAL_ENTRY : classifies
+    JOURNAL_ENTRY ||--|{ POSTING : "has ≥2 legs (account | category | fx)"
+    RECONCILIATION |o--o{ POSTING : "clears account legs"
     JOURNAL_ENTRY ||--o{ ENTRY_SHARE : "split between"
     MEMBER ||--o{ ENTRY_SHARE : bears
     EXTERNAL_PARTICIPANT ||--o{ ENTRY_SHARE : bears
@@ -31,6 +36,8 @@ erDiagram
     INSTALLMENT_PLAN ||--|{ INSTALLMENT : schedules
     ACCOUNT ||--o{ INSTALLMENT_PLAN : "credit card"
     RECURRING_RULE ||--o{ JOURNAL_ENTRY : generates
+    RECURRING_RULE ||--|{ RECURRING_RULE_POSTING : "template legs"
+    RECURRING_RULE ||--o{ RECURRING_RULE_SHARE : "template shares"
     IMPORT_BATCH ||--o{ IMPORT_ROW : stages
     IMPORT_BATCH ||--o{ JOURNAL_ENTRY : committed
     CATEGORY ||--o{ BUDGET_LINE : budgets
@@ -49,22 +56,29 @@ All amounts below in CLP (0 decimals). Positive = debit (increase of assets/expe
 | Credit card purchase, 6 *cuotas* of 20 000 | `card −120 000` · `cat:Compras casa +120 000` + `installment_plan` (6 rows) | Liability grows by total (as banks do). Budget impact per installment month if `budget_mode = per_installment` (computed in Rust). |
 | Pay credit card | `checking −300 000` · `card +300 000` | Transfer (FR-TX-05). |
 | Card interest | `card −3 500` · `cat:Intereses +3 500` | Expense. |
-| Shared rent paid by A from personal account, 50/50 | `A.checking −600 000` · `cat:Arriendo +600 000`; `is_shared=1`, `payer=A`, shares: A 300 000, B 300 000 | Settle-up: B owes A 300 000 (computed in Rust). |
+| Shared rent paid by A from personal account, 50/50 | `A.checking −600 000` · `cat:Arriendo +600 000`; `payer=A`, shares: A 300 000, B 300 000 (an entry is shared when it has shares) | Settle-up: B owes A 300 000 (computed in Rust). |
 | B settles with A | `B.checking −300 000` · `A.checking +300 000`, `kind=settlement` | Clears the balance; not an expense. |
 | Subscription split 3-way with a friend outside the household | `card −15 000` · `cat:Streaming +10 000` · `Por cobrar +5 000` | Only the household's share is an expense. The friend's share goes to a system *receivable* account (`kind = other_asset`, "Cuentas por cobrar") and is linked through `entry_share.participant_id`; their reimbursement (`checking +5 000` · `Por cobrar −5 000`) sets `settled_entry_id`. |
 | USD purchase on card's international section | `card_usd −2 500` (USD minor = 25.00) · `cat:Software +2 500` (USD) | Reports convert to CLP with the rate of the date (Rust). |
-| Pay USD card section in CLP | `checking −23 750 (CLP)` · `fx:CLP +23 750` · `fx:USD −2 500` · `card_usd +2 500 (USD)` | `fx_exchange` entry balances per currency through an FX trading pair; both amounts are recorded, the rate is implied and auditable. |
+| Pay USD card section in CLP | `checking −23 750 (CLP)` · `fx:CLP +23 750` · `fx:USD −2 500` · `card_usd +2 500 (USD)` | `fx_exchange` entry balances per currency through an FX trading pair (`posting.leg = 'fx'`, no target row: the leg's currency is the target); both amounts are recorded, the rate is implied and auditable. FX legs are never income or expense, so this is a transfer. |
+
+**Legs and status** ([ADR-0009](adr/0009-posting-legs-and-per-leg-status.md)). Each posting has a `leg`: `account`, `category` or `fx`. An account leg's currency must equal its account's (composite FK). Status (`pending`, `cleared`, `reconciled`) lives on **account legs**, because a statement reconciles one account: a transfer can be reconciled on the checking statement and still pending on the card's. A reconciled leg points at the `reconciliation` of that same account. An entry's status, and the FR-AC-06 lock, are derived from its legs. `journal_entry.kind` records intent only (`regular`, `opening_balance`, `adjustment`, `settlement`, `installment_purchase`, `fx_exchange`); expense, income and transfer are derived by `classify()`.
 
 ## Categories are data
 
-- A category is a row in `category`, referenced everywhere by its ID; **no code path names a specific category**. The seed tree is inserted as ordinary rows on household creation and can be edited or deleted like anything else (FR-BU-01).
+- A category is a row in `category`, referenced everywhere by its ID; **no code path names a specific category**. The seed tree is inserted as ordinary rows on household creation and can be edited or deleted like anything else (FR-BU-01). The default tree lives in one place, `crates/mr-krabs-core/src/seed.rs`. Seeded rows get `id = UUIDv5(namespace, seed_key)`, `hlc = 0`, and no change-log entry, so both devices seed identical rows and any user edit wins ([ADR-0008](adr/0008-deterministic-ids-for-seeded-rows.md)).
 - `parent_id` forms a tree of **any depth**. A child's `kind` must equal its parent's. Schema v2 declares this as a composite foreign key `(parent_id, kind) → category(id, kind)`, which is a plain constraint, not SQL logic. `mrk-domain` also checks it, and keeps `kind` immutable. Cycles are rejected by `mrk-domain` before every write.
 - Any node can be a posting leg or carry a budget line. Reports roll a node's amounts up through its descendants in Rust (FR-BU-08).
 - `kind` is only `income` or `expense`. Savings and investments are **accounts**, so money moved there is a transfer with no category leg (FR-TX-02).
-- Delete = merge: re-point the category's postings and budget lines to a chosen target, then soft-delete it, in one transaction (FR-BU-07). Archive sets `is_archived` and keeps history intact.
-- Imports resolve categories by normalized name (case- and accent-insensitive) in Rust; unresolved names stay in staging until the user maps or creates them (FR-IM-07).
+- Delete = merge (FR-BU-07), in one transaction:
+  - postings, sub-categories, payee defaults, rules, recurring templates and staged rows move to a chosen target of the same kind;
+  - budget lines move too, and two lines for the same month and scope are **summed** (in Rust);
+  - the category is soft-deleted with `merged_into_id` set, so references that arrive later from the other device follow it.
 
-Planned schema additions (forward migrations, M5): `payee_rule` in 0001 holds one condition and two actions; the staged rules engine (FR-TX-10) extends it with a stage and condition/action lists. The local categorizer (FR-TX-12) needs **no table**: its word → category model is derived in Rust from the categorized entries already in the ledger (principle 1), so it is rebuilt on demand, both devices learn from synced history, and there are no counters to conflict.
+  A category nothing uses can be deleted without a target. Archive sets `is_archived` and keeps history intact.
+- Imports resolve categories by normalized name (case- and accent-insensitive) in Rust; unresolved names stay in staging until the user maps or creates them (FR-IM-07). The normalized name is stored as `category.name_key` by `mrk_domain::normalize_name`. Live siblings can't share a `name_key`, so a name in a file matches exactly one category. `ñ` stays a letter of its own.
+
+Planned schema additions (forward migrations, M4/M5; shapes tested in [`db-review/design/schema-planned.sql`](db-review/design/schema-planned.sql)): `account_valuation` for manual asset values and partner summaries; the staged rules engine (`rule`, `rule_condition`, `rule_action`, replacing `payee_rule`); import staging for match candidates, workbook budget lines and remembered category mappings. Recurring templates are already rows in v2 (`recurring_rule_posting`, `recurring_rule_share`). The local categorizer (FR-TX-12) needs **no table**: its word → category model is derived in Rust from the categorized entries already in the ledger (principle 1), so it is rebuilt on demand, both devices learn from synced history, and there are no counters to conflict.
 
 ## Rust domain model (sketch)
 
@@ -87,11 +101,11 @@ pub fn convert(m: Money, rate: &FxRate, to_minor_units: u8, mode: RoundingMode) 
 // mrk-domain
 pub struct EntryId(Uuid); pub struct AccountId(Uuid); /* … newtypes for every ID … */
 
-pub enum Leg { Account(AccountId), Category(CategoryId), FxTrading(CurrencyCode) }
+pub enum Leg { Account(AccountId), Category(CategoryId), FxTrading }   // FX leg: the posting's currency is the target
 pub struct Posting { pub id: PostingId, pub leg: Leg, pub amount: Money, pub memo: String }
 
 pub struct JournalEntry {
-    pub id: EntryId, pub date: NaiveDate, pub kind: EntryKind, pub status: EntryStatus,
+    pub id: EntryId, pub date: NaiveDate, pub kind: EntryKind,   // status lives on account legs
     pub payee: Option<PayeeId>, pub description: String, pub memo: String,
     pub postings: Vec<Posting>,
     pub sharing: Option<Sharing>,          // payer + shares (members / external participants)

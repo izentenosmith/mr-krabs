@@ -128,6 +128,13 @@ With no deployed consumer, expand/contract isn't needed, and the contract happen
 > 2. **Foreign keys.** `Store::migrate()` runs each migration with `foreign_keys` off and requires an empty `PRAGMA foreign_key_check` before commit. That is SQLite's documented rebuild procedure; `defer_foreign_keys` can't survive a `DROP TABLE` of a referenced parent.
 >
 > Guards G3/G4 implement pre-checks (d)/(e). Every other pre-check is enforced by the new tables' own constraints during the copy, which aborts the migration.
+>
+> **Steps 4–7 as built (2026-11-22):**
+> - **Step 4.** The negative tests are mrk-store Rust tests. `name_key = normalize(name)` is asserted for every seeded and user category in mr-krabs-core.
+> - **Step 5.** In mrk-domain: `Leg::FxTrading` (a unit variant: the posting's own currency is the target, so leg and amount can't disagree); `classify()` ignores FX legs, with a property test; `normalize_name()`; `validate_parent` (kind and cycle, with a property test); `validate_kind_change`; `plan_merge` (budget sums in `Money`).
+> - **Step 6.** In mr-krabs-core: the seed catalogue (`seed.rs`, es-CL and English names, UUIDv5 ids), `App::seed_household_defaults` and `App::category_delete` (merge or plain delete). The store writes are in `mrk-store/src/categories.rs`. The `uuid` `v5` feature is enabled.
+>   - **Not wired yet:** `household_create`, household adoption and a `category_delete` shell command don't exist before M1/M2, so the seeder and delete are core methods for now. `category_delete` takes an explicit HLC `Stamp` until the device clock arrives, and writes no change-log entry until the sync milestone.
+> - **Step 7.** ADR-0008 (seeded ids) and ADR-0009 (posting legs and per-leg status); docs/01 (catalogue as source), docs/03 (schema v2, ER diagram, legs and status, categories), docs/05 (merge rules 7–11) and CLAUDE.md (ID exception).
 
 **0002 data mapping** (a no-op on empty databases; correct on developer databases):
 

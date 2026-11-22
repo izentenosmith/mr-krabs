@@ -77,7 +77,7 @@ Run fmt, clippy and the tests for anything you touch before committing.
 - Rust edition 2024, `rustfmt.toml` (max width 100). Errors are explicit enums deriving `thiserror::Error`; map to `ApiError { code, message }` at the core boundary.
 - Rust tests: `proptest` for invariants, `insta` snapshots for wire contracts, `pretty_assertions` for diffs.
 - Logging: `tracing` only; never log amounts or descriptions at `info`.
-- IDs are UUIDv7 (from M1). Dates are civil `YYYY-MM-DD`; sync timestamps use HLC.
+- IDs are UUIDv7 (from M1), except seeded rows, which use UUIDv5 from their `seed_key` (ADR-0008). Dates are civil `YYYY-MM-DD`; sync timestamps use HLC.
 - Wire format is camelCase JSON. Error codes are SCREAMING_SNAKE_CASE.
 - Frontend: TypeScript strict, `@/` alias to `apps/desktop/src`, shadcn components in `src/components/ui`, features in `src/features/<area>`, routes in `src/routes` (TanStack Router, hash history). UI copy in Spanish (es-CL) via `react-i18next` keys in `src/i18n/`, never inline strings. Forms use `react-hook-form` + `zod` for shape only; amounts are validated in Rust. Lists use TanStack Table (+ Virtual for long ones).
 - `Cargo.lock` and `pnpm-lock.yaml` are committed; CI installs `--locked` / `--frozen-lockfile`, so commit lockfile changes with the manifest change.

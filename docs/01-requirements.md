@@ -52,6 +52,8 @@ Groups mirror the spreadsheet so the household recognizes it on day one. The see
 | Deudas | Intereses y comisiones (principal payments are transfers) |
 
 The spreadsheet's *Inversiones y ahorros* rows (Fondo de emergencia, Ahorro, Inversiones) are **seeded as savings/investment accounts, not categories**: moving money into them is a transfer, and transfers carry no category leg (FR-TX-02), so they never count as expenses.
+
+The seed's single source is the catalogue in [`crates/mr-krabs-core/src/seed.rs`](../crates/mr-krabs-core/src/seed.rs), with es-CL and English names. This table describes it. Seeded rows get deterministic ids, so both paired devices seed the same rows ([ADR-0008](adr/0008-deterministic-ids-for-seeded-rows.md)).
 <!-- FEATURE-CATALOGUE:END -->
 
 ## Functional requirements

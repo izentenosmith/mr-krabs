@@ -9,5 +9,7 @@
 | [0005](0005-hlc-per-field-lww.md) | HLC + per-field LWW change log | Accepted |
 | [0006](0006-ai-optional-extractor-only.md) | AI is optional and only proposes | Accepted |
 | [0007](0007-devserver-http-shell.md) | Dev-only HTTP shell for Docker development | Accepted |
+| [0008](0008-deterministic-ids-for-seeded-rows.md) | Deterministic ids for seeded rows | Accepted |
+| [0009](0009-posting-legs-and-per-leg-status.md) | Posting legs and per-leg status | Accepted |
 
 Template: Context → Decision → Consequences.

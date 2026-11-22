@@ -9,6 +9,13 @@ use std::time::Duration;
 
 use rusqlite::Connection;
 
+mod categories;
+
+pub use categories::{
+    BudgetLineAmount, CategoryMergeWrite, CategoryRow, HouseholdSettings, SeedAccount,
+    SeedCategory, SeedReport, Stamp,
+};
+
 /// Ordered, embedded, forward-only migrations. The index + 1 is the schema version.
 pub const MIGRATIONS: &[(&str, &str)] = &[
     ("0001_init", include_str!("../migrations/0001_init.sql")),
