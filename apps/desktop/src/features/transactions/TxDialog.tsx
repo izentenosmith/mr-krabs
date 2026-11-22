@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -188,7 +189,7 @@ export function TxDialog({
   onDelete,
 }: TxDialogProps) {
   const { t, i18n } = useTranslation();
-  const { register, handleSubmit, watch, setError, formState } = useForm<FormValues>({
+  const { register, handleSubmit, watch, setError, setValue, getValues, formState } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: defaults(initial),
   });
@@ -207,7 +208,27 @@ export function TxDialog({
   const type = watch("type");
   const accountId = watch("accountId");
   const currency = accounts.find((a) => a.id === accountId)?.currency;
-  const categoryOptions = type === "income" ? categories.income : categories.expense;
+  const optionsFor = (kind: FormValues["type"]) => (kind === "income" ? categories.income : categories.expense);
+  const categoryOptions = optionsFor(type);
+  // A category belongs to one type's list: switching types drops one the new list doesn't
+  // have, so what is sent is always what the select shows (F15).
+  const typeField = register("type", {
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
+      const next = e.target.value as FormValues["type"];
+      if (!optionsFor(next).some((c) => c.id === getValues("categoryId"))) setValue("categoryId", "");
+    },
+  });
+  const [deleting, setDeleting] = useState(false);
+  const busy = deleting || formState.isSubmitting;
+  const remove = async () => {
+    if (!onDelete || busy) return;
+    setDeleting(true);
+    try {
+      await onDelete();
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const submit = handleSubmit(async (v) => {
     try {
@@ -232,9 +253,9 @@ export function TxDialog({
             {TYPES.map((value) => (
               <label
                 key={value}
-                className="has-[:checked]:bg-accent flex-1 cursor-pointer rounded px-3 py-1 text-center text-sm has-[:checked]:font-medium"
+                className="has-[:checked]:bg-accent has-[:focus-visible]:ring-ring/50 flex-1 cursor-pointer rounded px-3 py-1 text-center text-sm has-[:checked]:font-medium has-[:focus-visible]:ring-[3px]"
               >
-                <input type="radio" value={value} {...register("type")} className="sr-only" />
+                <input type="radio" value={value} {...typeField} className="sr-only" />
                 {t(`tx.type.${value}`)}
               </label>
             ))}
@@ -314,7 +335,8 @@ export function TxDialog({
                 type="button"
                 variant="ghost"
                 className="text-destructive sm:mr-auto"
-                onClick={() => void onDelete()}
+                disabled={busy}
+                onClick={() => void remove()}
               >
                 {t("tx.form.delete")}
               </Button>
@@ -322,7 +344,7 @@ export function TxDialog({
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               {t("tx.form.cancel")}
             </Button>
-            <Button type="submit" disabled={formState.isSubmitting}>
+            <Button type="submit" disabled={busy}>
               {t("tx.form.save")}
             </Button>
           </DialogFooter>
