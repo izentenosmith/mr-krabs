@@ -114,4 +114,13 @@ describe("TxDialog", () => {
     await waitFor(() => expect(d.getByLabelText("Monto")).toHaveAttribute("aria-invalid", "true"));
     expect(onSubmit).not.toHaveBeenCalled();
   });
+
+  it("switching to transfer and back keeps the original type's category (F41)", () => {
+    const { d } = renderDialog();
+    fireEvent.click(d.getByRole("radio", { name: "Ingreso" }));
+    fireEvent.change(d.getByLabelText("Categoría"), { target: { value: "c2" } });
+    fireEvent.click(d.getByRole("radio", { name: "Transferencia" }));
+    fireEvent.click(d.getByRole("radio", { name: "Ingreso" }));
+    expect(d.getByLabelText("Categoría")).toHaveValue("c2");
+  });
 });

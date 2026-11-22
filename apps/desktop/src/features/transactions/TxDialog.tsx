@@ -215,6 +215,8 @@ export function TxDialog({
   const typeField = register("type", {
     onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
       const next = e.target.value as FormValues["type"];
+      // A transfer has no category; keep the value so switching back restores it (F41).
+      if (next === "transfer") return;
       if (!optionsFor(next).some((c) => c.id === getValues("categoryId"))) setValue("categoryId", "");
     },
   });
@@ -277,14 +279,14 @@ export function TxDialog({
           </Field>
 
           {type === "transfer" ? (
-            <Field id={idOf("toAccountId")} label={t("tx.form.to")} error={err("toAccountId")}>
+            <Field key="to" id={idOf("toAccountId")} label={t("tx.form.to")} error={err("toAccountId")}>
               <select {...bind("toAccountId")} className={control}>
                 <option value="">{t("tx.form.choose")}</option>
                 <AccountOptions accounts={accounts} />
               </select>
             </Field>
           ) : (
-            <Field id={idOf("categoryId")} label={t("tx.form.category")} error={err("categoryId")}>
+            <Field key="category" id={idOf("categoryId")} label={t("tx.form.category")} error={err("categoryId")}>
               <select {...bind("categoryId")} className={control}>
                 <option value="">{t("tx.form.choose")}</option>
                 {categoryOptions.map((c) => (
