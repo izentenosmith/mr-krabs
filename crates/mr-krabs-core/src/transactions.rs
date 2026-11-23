@@ -608,7 +608,14 @@ fn tx_error(input: Option<&NewTxInput>, e: DomainError) -> ApiError {
         DomainError::Money(_) => Some(("amount", "invalidAmount".to_owned())),
         DomainError::SameAccountTransfer => Some(("toAccountId", "sameAccount".to_owned())),
         DomainError::InvalidDate(_) => Some(("date", "invalidDate".to_owned())),
-        DomainError::CurrencyMismatch { .. } => Some(("amount", "currencyMismatch".to_owned())),
+        // The amount carries the source's currency check; a transfer that passes it and still
+        // mismatches is the destination's (F9).
+        DomainError::CurrencyMismatch { account, .. } => match input {
+            Some(NewTxInput::Transfer(t)) if t.to_account_id == *account => {
+                Some(("toAccountId", "currencyMismatch".to_owned()))
+            }
+            _ => Some(("amount", "currencyMismatch".to_owned())),
+        },
         DomainError::ArchivedAccount(a) => Some(field("archived", a)),
         DomainError::UnknownAccount(a) => Some(field("notFound", a)),
         _ => None,

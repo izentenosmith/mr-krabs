@@ -1262,3 +1262,37 @@ fn r_f3_rows_of_an_entry_on_a_private_account_are_logged_private() {
     assert_eq!(vis(&env, &private), vec!["private"]);
     assert_eq!(vis(&env, &household), vec!["household"]);
 }
+
+#[test]
+fn r_f9_a_transfer_into_an_account_of_another_currency_points_at_the_destination() {
+    let mut env = Env::new("rf9");
+    let clp_account = env.account("A", None, false);
+    let usd = env.ok(
+        "account_create",
+        json!({ "input": { "name": "USD", "kind": "checking", "currency": "USD" } }),
+    )["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let before = env.state();
+    let e = env.err(
+        "tx_create",
+        json!({ "input": transfer(&clp_account, &usd, "1.000", "2026-11-21") }),
+    );
+    field_error(
+        &e,
+        ErrorCode::CurrencyMismatch,
+        "toAccountId",
+        "errors.field.currencyMismatch",
+    );
+    let mut expense_usd = expense(&clp_account, "10,00", "2026-11-21");
+    expense_usd["amount"] = json!({ "amount": "10,00", "currency": "USD" });
+    let e = env.err("tx_create", json!({ "input": expense_usd }));
+    field_error(
+        &e,
+        ErrorCode::CurrencyMismatch,
+        "amount",
+        "errors.field.currencyMismatch",
+    );
+    assert_eq!(env.state(), before);
+}
