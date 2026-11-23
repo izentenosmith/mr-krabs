@@ -9,6 +9,7 @@ pub mod category;
 mod date;
 pub mod entry;
 pub mod ledger;
+pub mod report;
 
 pub use balance::{BalanceRow, account_balances};
 pub use category::{
@@ -21,3 +22,9 @@ pub use entry::{
     TxType, UpdatePlan, ensure_unlocked, plan_update, roles,
 };
 pub use ledger::{DomainError, EntryKind, Leg, Posting, classify, validate_balanced};
+pub use report::{
+    AccountKind, BudgetMatrix, CalendarRow, CashFlow, CashFlowLine, CashFlowMonth, CategoryTree,
+    Cell, Excluded, MatrixMonth, MatrixRow, MonthCalendar, ReportAccount, ReportBudgetLine,
+    ReportCategory, ReportData, ReportError, ReportPosting, Scope, Spending, SpendingRow, TreeRow,
+    View, Viewer, budget_matrix, cash_flow, month_calendar, spending,
+};
