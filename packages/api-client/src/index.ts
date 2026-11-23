@@ -45,7 +45,8 @@ export { createHttpInvoke, detectTransport, type Invoke, type TransportKind } fr
 export function createApi(invoke: Invoke) {
   // One method per command in `COMMANDS` (crates/mr-krabs-core/src/commands.rs); argument
   // keys are the Tauri parameter names. A command whose slice has not landed answers
-  // NOT_IMPLEMENTED (M2: everything below `category.tree` except `category.delete`).
+  // NOT_IMPLEMENTED: in M2, `category.create/update/move/archive`, every `budget.*` and
+  // `report.*` method, and `tx.list` with `categoryId`.
   return {
     app: {
       health: () => invoke<HealthDto>("app_health"),

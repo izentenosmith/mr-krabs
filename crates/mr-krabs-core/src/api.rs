@@ -594,7 +594,8 @@ pub struct CashFlowMonthDto {
     pub expense: MoneyDto,
     pub saved: MoneyDto,
     pub free_cash_flow: MoneyDto,
-    /// saved ÷ income in basis points; `null` when income is 0.
+    /// saved ÷ income in basis points; `null` when income is 0. Clamped to the `i32`
+    /// range (an extreme ratio is reported at the bound, never wrapped).
     pub savings_rate_bp: Option<i32>,
 }
 
@@ -1099,6 +1100,74 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    /// #37 F4: every M2 input field is read from its camelCase wire name (an optional field
+    /// read under the wrong name would silently become `None`).
+    #[test]
+    fn m2_inputs_read_every_field_by_its_wire_name() {
+        let c: CategoryInput = serde_json::from_value(json!({
+            "kind": "expense", "parentId": "p", "name": "Cine", "icon": "film"
+        }))
+        .unwrap();
+        assert_eq!(
+            c,
+            CategoryInput {
+                kind: CategoryKind::Expense,
+                parent_id: Some("p".into()),
+                name: "Cine".into(),
+                icon: Some("film".into()),
+            }
+        );
+        let u: CategoryUpdateInput =
+            serde_json::from_value(json!({ "id": "c", "name": "Cine", "icon": "" })).unwrap();
+        assert_eq!(
+            (u.name.as_deref(), u.icon.as_deref()),
+            (Some("Cine"), Some(""))
+        );
+        let m: CategoryMoveInput =
+            serde_json::from_value(json!({ "id": "c", "parentId": "p", "index": 1 })).unwrap();
+        assert_eq!((m.parent_id.as_deref(), m.index), (Some("p"), 1));
+        let a: CategoryArchiveInput =
+            serde_json::from_value(json!({ "id": "c", "archived": true })).unwrap();
+        assert!(a.archived);
+        let d: CategoryDeleteInput =
+            serde_json::from_value(json!({ "id": "c", "mergeIntoId": "d" })).unwrap();
+        assert_eq!(d.merge_into_id.as_deref(), Some("d"));
+        let s: BudgetSetInput = serde_json::from_value(json!({
+            "period": "2026-11", "categoryId": "c", "scope": "household", "amount": "150.000"
+        }))
+        .unwrap();
+        assert_eq!(
+            (
+                s.period.as_str(),
+                s.category_id.as_str(),
+                s.scope,
+                s.amount.as_str()
+            ),
+            ("2026-11", "c", BudgetScope::Household, "150.000")
+        );
+        let b: BudgetCopyInput = serde_json::from_value(json!({
+            "from": "2026-10", "to": "2026-11", "overwrite": true
+        }))
+        .unwrap();
+        assert_eq!(b.overwrite, Some(true));
+        let q: BudgetMatrixQuery =
+            serde_json::from_value(json!({ "year": 2026, "view": "household" })).unwrap();
+        assert_eq!((q.year, q.view), (2026, View::Household));
+        let q: MonthCalendarQuery =
+            serde_json::from_value(json!({ "month": "2026-02", "view": "personal" })).unwrap();
+        assert_eq!(q.month, "2026-02");
+        let q: CashFlowQuery = serde_json::from_value(
+            json!({ "from": "2026-01", "to": "2026-03", "view": "combined" }),
+        )
+        .unwrap();
+        assert_eq!((q.from.as_str(), q.to.as_str()), ("2026-01", "2026-03"));
+        let q: SpendingQuery = serde_json::from_value(
+            json!({ "from": "2026-01", "to": "2026-03", "view": "combined" }),
+        )
+        .unwrap();
+        assert_eq!((q.from.as_str(), q.to.as_str()), ("2026-01", "2026-03"));
     }
 
     #[test]

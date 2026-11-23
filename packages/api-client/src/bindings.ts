@@ -209,7 +209,10 @@ export type CashFlowMonthDto = {
 	expense: MoneyDto,
 	saved: MoneyDto,
 	freeCashFlow: MoneyDto,
-	/**  saved ÷ income in basis points; `null` when income is 0. */
+	/**
+	 *  saved ÷ income in basis points; `null` when income is 0. Clamped to the `i32`
+	 *  range (an extreme ratio is reported at the bound, never wrapped).
+	 */
 	savingsRateBp: number | null,
 };
 

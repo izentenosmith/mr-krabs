@@ -555,6 +555,58 @@ mod tests {
         }
     }
 
+    /// #37 F2: a category whose only transaction was deleted still needs a merge target, so
+    /// the deleted transaction stays restorable.
+    #[test]
+    fn category_delete_keeps_deleted_transactions_restorable() {
+        let mut app = household_app();
+        let account = dispatch(
+            &mut app,
+            "account_create",
+            json!({ "input": { "name": "Cuenta", "kind": "checking", "currency": "CLP" } }),
+        )
+        .unwrap()["id"]
+            .clone();
+        let tree = expense_tree(&mut app);
+        let group = tree
+            .iter()
+            .find(|n| n["children"].as_array().unwrap().len() >= 2)
+            .unwrap();
+        let (leaf, sibling) = (
+            group["children"][0]["id"].clone(),
+            group["children"][1]["id"].clone(),
+        );
+        let tx = dispatch(
+            &mut app,
+            "tx_create",
+            json!({ "input": {
+                "type": "expense", "accountId": account, "categoryId": leaf,
+                "amount": { "amount": "5.000", "currency": "CLP" }, "date": "2026-11-21"
+            } }),
+        )
+        .unwrap()["id"]
+            .clone();
+        dispatch(&mut app, "tx_delete", json!({ "id": tx })).unwrap();
+
+        let e = dispatch(
+            &mut app,
+            "category_delete",
+            json!({ "input": { "id": leaf } }),
+        )
+        .unwrap_err();
+        assert_eq!(e.code, ErrorCode::Validation);
+        dispatch(
+            &mut app,
+            "category_delete",
+            json!({ "input": { "id": leaf, "mergeIntoId": sibling } }),
+        )
+        .unwrap();
+        dispatch(&mut app, "tx_restore", json!({ "id": tx })).unwrap();
+        let restored = dispatch(&mut app, "tx_get", json!({ "id": tx })).unwrap();
+        assert_eq!(restored["categoryId"], sibling);
+        assert_eq!(restored["deleted"], false);
+    }
+
     /// `TxQuery.categoryId` is refused until report-commands builds the filter, so nobody
     /// takes an unfiltered page for a filtered one; without it `tx_list` is unchanged.
     #[test]

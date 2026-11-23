@@ -469,6 +469,37 @@ mod tests {
         assert_eq!(num("SELECT count(*) FROM pragma_foreign_key_check"), 0);
     }
 
+    /// #37 F3: references a merge would re-point make a category "used", even where no
+    /// posting or budget line does.
+    #[test]
+    fn deleting_without_merge_counts_every_reference_a_merge_moves() {
+        let mut app = app_with_household("es-CL");
+        app.seed_household_defaults().unwrap();
+        let cinema = sid("expense.leisure.cinema");
+        app.store
+            .connection()
+            .execute(
+                "INSERT INTO payee (id, name, default_category_id, hlc, hlc_device) \
+                 VALUES ('py', 'Cine', ?1, 1, 'dev-a')",
+                [&cinema],
+            )
+            .unwrap();
+        let err = app.category_delete(&cinema, None).unwrap_err();
+        assert_eq!(err.code, ErrorCode::Validation);
+        app.category_delete(&cinema, Some(&sid("expense.leisure")))
+            .unwrap();
+        let moved: String = app
+            .store
+            .connection()
+            .query_row(
+                "SELECT default_category_id FROM payee WHERE id = 'py'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(moved, sid("expense.leisure"));
+    }
+
     #[test]
     fn deleting_a_used_category_needs_a_merge_target_of_the_same_kind() {
         let mut app = app_with_household("es-CL");

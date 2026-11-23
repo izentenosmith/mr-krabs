@@ -166,10 +166,17 @@ impl Store {
         Ok(out)
     }
 
-    /// How many live postings, budget lines and child categories reference a category.
+    /// How many rows a merge would re-point (`apply_category_merge`): postings and recurring
+    /// postings (soft-deleted ones too, so a deleted transaction stays restorable), payee
+    /// defaults, payee rules and staged import rows, plus live budget lines and live children.
+    /// Zero means the category can be deleted without a merge target.
     pub fn category_reference_count(&self, id: &str) -> Result<i64> {
         Ok(self.conn.query_row(
-            "SELECT (SELECT count(*) FROM posting     WHERE deleted = 0 AND category_id = ?1)
+            "SELECT (SELECT count(*) FROM posting                WHERE category_id = ?1)
+                  + (SELECT count(*) FROM recurring_rule_posting WHERE category_id = ?1)
+                  + (SELECT count(*) FROM payee                  WHERE default_category_id = ?1)
+                  + (SELECT count(*) FROM payee_rule             WHERE set_category_id = ?1)
+                  + (SELECT count(*) FROM import_row             WHERE suggested_category_id = ?1)
                   + (SELECT count(*) FROM budget_line WHERE deleted = 0 AND category_id = ?1)
                   + (SELECT count(*) FROM category    WHERE deleted = 0 AND parent_id   = ?1)",
             [id],
