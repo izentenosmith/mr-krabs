@@ -10,12 +10,14 @@ use crate::category::CategoryKind;
 use crate::ledger::Leg;
 
 mod calendar;
+mod cash_flow;
 mod flows;
 mod matrix;
 mod period;
 mod tree;
 
 pub use calendar::month_calendar;
+pub use cash_flow::cash_flow;
 pub use matrix::budget_matrix;
 pub use tree::{CategoryTree, TreeRow};
 
@@ -299,15 +301,6 @@ pub struct CashFlow {
     pub months: Vec<CashFlowMonth>,
     pub total: CashFlowLine,
     pub excluded: Vec<Excluded>,
-}
-
-pub fn cash_flow(
-    _data: &ReportData,
-    _viewer: &Viewer,
-    _from: &str,
-    _to: &str,
-) -> Result<CashFlow, ReportError> {
-    unimplemented!("R0: cash_flow")
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
