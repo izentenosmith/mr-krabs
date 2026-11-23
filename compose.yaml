@@ -4,8 +4,8 @@
 #   open http://localhost:5173       # React UI (talks to the devserver over HTTP)
 #   open http://localhost:8081       # DB browser (read-only)
 #
-#   docker compose --profile test run --rm test-back    # Rust unit tests
-#   docker compose --profile test run --rm test-front   # Frontend unit tests
+#   docker compose --profile test run --rm test-back    # guardrails + fmt + clippy + Rust tests
+#   docker compose --profile test run --rm test-front   # lint + typecheck + vitest + build
 #
 # The production app is the Tauri desktop shell; this environment runs the same core
 # behind a dev-only HTTP shell (apps/devserver). See docs/08-development.md.
@@ -93,12 +93,38 @@ services:
       - cargo-registry:/usr/local/cargo/registry
       - cargo-git:/usr/local/cargo/git
       - cargo-target-test:/cargo-target
-    command: ["cargo", "test", "--workspace", "--exclude", "mr-krabs-desktop"]
+    # Mirrors CI's `guardrails` (minus the gitleaks scan) and `rust` jobs
+    # (.github/workflows/ci.yml); keep them in step. --locked: fail on a stale Cargo.lock
+    # instead of rewriting it on the host.
+    command:
+      - sh
+      - -ec
+      - |
+        bash tools/check-no-sql-logic.sh
+        db="$$(mktemp)"
+        for f in crates/mrk-store/migrations/*.sql; do sqlite3 -bail "$$db" < "$$f"; done
+        # Assign first: a failing sqlite3 then fails the step under -e (inside `test` it can't).
+        fk="$$(sqlite3 "$$db" 'PRAGMA foreign_key_check;')"
+        test -z "$$fk"
+        test "$$(sqlite3 "$$db" 'PRAGMA integrity_check;')" = ok
+        cargo fmt --all --check
+        cargo clippy --locked --workspace --exclude mr-krabs-desktop --all-targets -- -D warnings
+        cargo test --locked --workspace --exclude mr-krabs-desktop
 
   test-front:
     <<: *node
     profiles: ["test"]
-    command: ["sh", "-c", "pnpm install && pnpm lint && pnpm typecheck && pnpm test"]
+    # Mirrors CI's `frontend` job; keep them in step. `pnpm build` writes apps/desktop/dist
+    # (gitignored) on the host, as it does natively.
+    command:
+      - sh
+      - -ec
+      - |
+        pnpm install --frozen-lockfile
+        pnpm lint
+        pnpm typecheck
+        pnpm test
+        pnpm build
 
 volumes:
   mrk-data:

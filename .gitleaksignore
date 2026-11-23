@@ -1,0 +1,4 @@
+# Reviewed false positives (one fingerprint per line: commit:file:rule:line).
+# a21a01c: a draw.io style string next to a variable named `keys` in the diagram
+# generator, no secret. The code was fixed in 787d644; the old commit stays in PR history.
+a21a01c7f085272cbb6a75600700fe4fa829fcc8:docs/db-review/diagrams/gen_diagrams.py:generic-api-key:355

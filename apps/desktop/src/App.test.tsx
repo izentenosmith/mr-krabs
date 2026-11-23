@@ -15,20 +15,28 @@ vi.mock("@mr-krabs/api-client", () => ({
         latestSchemaVersion: 1,
         dbPath: null,
       }),
+      bootstrap: vi.fn().mockResolvedValue({
+        household: { id: "h-1", name: "Casa Prueba", baseCurrency: "CLP", locale: "es-CL" },
+        members: [],
+        me: null,
+        settings: null,
+        schemaVersion: 1,
+      }),
     },
+    account: { list: vi.fn().mockResolvedValue([]) },
     money: { parse: vi.fn() },
   },
 }));
 
 describe("App", () => {
-  it("renders the core health from the api client", async () => {
+  it("renders the core health from the api client inside the app shell", async () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={qc}>
         <App history={createMemoryHistory({ initialEntries: ["/"] })} />
       </QueryClientProvider>,
     );
-    expect(await screen.findByRole("heading", { name: "Mr Krabs" })).toBeInTheDocument();
+    expect(await screen.findByText("Mr Krabs")).toBeInTheDocument();
     expect(await screen.findByText("En línea")).toBeInTheDocument();
     expect(screen.getByText("en memoria")).toBeInTheDocument();
   });

@@ -20,8 +20,8 @@ flowchart LR
 | `back` | `cargo watch … run -p mrk-devserver` | 7878 | Hot-reloads on changes in `crates/` and `apps/devserver/`. First start compiles everything (several minutes). |
 | `front` | `vite` dev server | 5173 | Proxies `/api/*` to `back`. `@mr-krabs/api-client` auto-selects the HTTP transport in the browser. |
 | `db` | `sqlite-web --read-only` | 8081 | SQLite is an embedded file, not a server: this service shares the data volume and lets you browse tables. Writes go only through the core. |
-| `test-back` *(profile `test`)* | `cargo test --workspace --exclude mr-krabs-desktop` | – | Rust unit tests. Own target volume (no lock contention with `back`) and no dev DB mount. |
-| `test-front` *(profile `test`)* | `pnpm lint && typecheck && test` | – | Frontend unit tests. |
+| `test-back` *(profile `test`)* | SQL-logic guardrail, migrations apply, `cargo fmt --check`, `clippy -D warnings`, `cargo test` (all `--locked`) | – | Same steps as CI's `guardrails` (except the gitleaks scan) and `rust` jobs. Own target volume (no lock contention with `back`) and no dev DB mount. |
+| `test-front` *(profile `test`)* | `pnpm install --frozen-lockfile`, `lint`, `typecheck`, `test`, `build` | – | Same steps as CI's `frontend` job. |
 
 ## Everyday commands
 

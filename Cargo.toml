@@ -50,8 +50,13 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
 thiserror = "2"
 # Declared here so M1 crates share one version: UUIDv7 ids, civil dates (docs/02-architecture.md).
-uuid = { version = "1", features = ["v7", "serde"] }
+uuid = { version = "1", features = ["v5", "v7", "serde"] }
 jiff = { version = "0.2", features = ["serde"] }
+# Wire contract: DTOs derive specta::Type; a core test exports packages/api-client/src/bindings.ts
+# (docs/04, design Q4). Pre-1.0, so pinned exactly; bump all three together.
+specta = { version = "=2.0.0-rc.28", features = ["derive"] }
+specta-serde = "=0.0.15"
+specta-typescript = "=0.0.15"
 
 # Test-only
 proptest = "1"

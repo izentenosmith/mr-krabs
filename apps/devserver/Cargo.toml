@@ -20,6 +20,8 @@ tracing-subscriber.workspace = true
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
+# JRN-1 reads the change log straight from the database file (no command exposes it).
+rusqlite.workspace = true
 
 [lints]
 workspace = true

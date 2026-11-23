@@ -160,7 +160,8 @@ sequenceDiagram
 
 ### Process & threads
 - Tauri main thread: UI/IPC.
-- Core runs on a **tokio** runtime owned by the shell: one **writer** connection (serialized through an `mpsc` actor) + a small pool of **read** connections (WAL allows concurrent reads).
+- **Until M7** the core is synchronous: the shell holds one `App` (one SQLite connection, WAL) behind a `Mutex`, and every `App` method is one call and one SQL transaction. Nothing in M1–M6 runs in the background.
+- **From M7** (sync), the core moves onto a **tokio** runtime owned by the shell: one **writer** connection (serialized through an `mpsc` actor) + a small pool of **read** connections (WAL allows concurrent reads). The `App` API stays the same, so callers don't change.
 - Sync engine is a background task: mDNS browser/advertiser, TCP listener, per-peer session tasks.
 - AI extraction runs as a cancellable background job emitting progress events.
 

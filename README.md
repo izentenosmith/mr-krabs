@@ -2,7 +2,7 @@
 
 [![ci](https://github.com/izentenosmith/mr-krabs/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/izentenosmith/mr-krabs/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-> *"I like money."* — a local-first personal & household finance app for macOS.
+> *"Time is money & the money is always right"* — a local-first personal & household finance app for macOS.
 
 Mr Krabs tracks **personal** and **household** finances for a two-person household (you and your partner), runs **100% on your own devices**, syncs **peer-to-peer over your home LAN**, and costs **$0 in infrastructure** — no cloud, no SaaS, no accounts.
 
@@ -57,8 +57,8 @@ docker compose up --build        # first run compiles Rust: a few minutes
 # UI           → http://localhost:5173
 # Core API     → http://localhost:7878/api/health
 # DB browser   → http://localhost:8081 (read-only)
-docker compose --profile test run --rm test-back    # Rust unit tests
-docker compose --profile test run --rm test-front   # frontend unit tests
+docker compose --profile test run --rm test-back    # Rust checks, as in CI
+docker compose --profile test run --rm test-front   # frontend checks, as in CI
 ```
 
 Desktop app (macOS, native): `pnpm install && pnpm tauri dev`. Details in [docs/08-development.md](docs/08-development.md).

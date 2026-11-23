@@ -148,6 +148,43 @@ Focus ring always visible: `ring-[3px] ring-ring/50` (Tailwind `focus-visible:`)
 
 ---
 
+### 5.1 Accounts sidebar
+- Section header "Cuentas" (`text-xs font-medium text-muted-foreground`) with a ghost icon
+  button `Plus` (`aria-label` "Nueva cuenta"). Not a primary button (the view's primary is
+  the toolbar's "+ Nuevo").
+- Accounts are grouped by kind, in this order, empty groups hidden; group caption `text-xs
+  text-muted-foreground`:
+  1. Bancos y efectivo — checking, cuenta_vista, savings, cash
+  2. Tarjetas de crédito — credit_card
+  3. Créditos — loan, mortgage
+  4. Inversiones — investment
+  5. Otros — other_asset, other_liability
+  Within a group, rows keep the order `account_list` returns.
+- Row (32px): name left (`text-sm`, truncate), balance right as `Amount` (`MoneyDto.display`
+  as received, `tabular-nums`, `foreground`; no sign styling — a balance is not an expense).
+  A personal account shows the `User` icon in `scope-personal` with a visually hidden
+  "Personal" label. An edit button (ghost icon `Pencil`, `aria-label` "Editar {name}") is
+  in the tab order and visible on row hover or focus.
+- Archived toggle: ghost small button at the end of the section, "Mostrar archivadas" /
+  "Ocultar archivadas", `aria-pressed`. Archived rows: name in `muted-foreground` plus the
+  `Archive` icon with a visually hidden "Archivada" label.
+- Empty: "Crea tu primera cuenta" text and an outline small button "Nueva cuenta".
+- M1 has one member, so there is no lens switcher yet; the sidebar asks for `view: combined`.
+  The switcher arrives with FR-HH-03.
+
+### 5.2 Onboarding
+- Full window on `background`; one centered `card` (max-w-md, border, no shadow, p-6).
+- Brand mark (`/favicon.png`, 40px) above the page title "Te damos la bienvenida a Mr Krabs"
+  (`text-xl font-semibold`) and a one-line `muted-foreground` description.
+- Fields stacked, 16px apart; one primary full-width button "Comenzar".
+
+### 5.3 Language toggle
+- The UI language (es-CL / en) is a per-device preference (DEC-16). It defaults to the household's locale, is kept on this device only, and is never synced. Money keeps the es-CL format, and category names stay as seeded.
+- **Sidebar footer:** a small `ToggleGroup` with two items, `ES` and `EN`, on the sync-status line at the bottom of the sidebar, right-aligned (`text-xs`, ghost, no fill on the inactive item). The group's `aria-label` is "Idioma" in es-CL and "Language" in en. Each item's accessible name is the full language name ("Español", "English"), and the item labels are not translated.
+- **Onboarding:** the same group, as a top-right ghost control above the card, so the language is chosen before any typing.
+- It switches at once (no reload, no confirmation, no toast), and keyboard focus stays on the toggle.
+- Not in the command palette or the toolbar.
+
 ## 6. Motion
 
 - CSS transitions only (no animation library).
@@ -177,6 +214,28 @@ Card, Table, Dialog, Sheet, Command, ToggleGroup, Select, Input, Tooltip, Sonner
 Lists over 50 rows are virtualized (NFR-05).
 
 ---
+
+### 7.1 Form fields
+- Label above the control (`text-sm font-medium`); control `h-9 rounded-md border
+  border-input bg-transparent px-3 text-sm`, focus ring per §5.
+- Short fixed lists (currency, account kind) use a native `<select>` with the same styling:
+  the macOS popup menu is the native feel (§1.4). shadcn `Select` is for searchable or long lists.
+- `MoneyInput`: text input, `inputMode="decimal"`, right-aligned `tabular-nums`, currency code
+  as a `muted-foreground` suffix. Text goes to Rust as typed.
+- Field error: `text-xs text-destructive` line under the control with the `CircleAlert` icon;
+  control gets `aria-invalid` and `aria-describedby` to it. Server `ApiError.fields` map to
+  the same place.
+- Form-level error (no field): `role="alert"` block above the footer, `CircleAlert` +
+  `text-destructive` text from the code → copy map (§9, never the raw code).
+
+### 7.2 States and feedback
+- **Loading:** one `muted-foreground` "Cargando…" line with `aria-busy` on the region; no spinners in rows or tables.
+- **Empty:** a block with the Lucide `Inbox` icon in `muted-foreground` and inviting text pointing at the view's primary action (§9). No second primary button.
+- **Not yet available** (`NOT_IMPLEMENTED`, design Q12): never styled as an error, because nothing is wrong. `Hourglass` icon + "Aún no disponible" + "Esta función llega en una próxima versión.", all `muted-foreground`.
+  - In a region (sidebar, page) it replaces the content, and the view's primary button is disabled.
+  - In a dialog it is the form-level message, and the form stays open with its values.
+- **Errors from an action outside a form** (delete, restore, loading more rows): Sonner `toast.error` with the same per-code text as §7.1's form-level error.
+- **Undo toast:** Sonner default toast. The text says what happened ("Transacción eliminada"), with one `Deshacer` action and an 8 s duration.
 
 ## 8. Charts
 

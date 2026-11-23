@@ -85,6 +85,8 @@ and updates `field_clock(entity, entity_id, field) = (hlc, device)` for each cha
 ### Visibility filtering
 `visibility = "private"` is assigned by core for: entities of accounts with `visibility = private` (their entries, postings, reconciliations, import batches) and local-only tables. For `shared_summary` accounts, core emits **balance snapshots** (`account_balance_snapshot` change type) instead of the underlying postings. Private changes are **never sent**.
 
+**The stored label is a write-time hint, not the rule** ([ADR-0012](adr/0012-sync-visibility-decided-at-send-time.md)). An account's visibility can change after its rows were logged, so the sender re-derives every change's visibility when it sends, from the row's **current** account and scope: postings, entries and reconciliations of `private` and `shared_summary` accounts never leave the device (a `shared_summary` account sends only balance snapshots), and `scope = personal` budget lines follow their member's account visibility. From M1, the change-log writer labels rows of private accounts `private` and everything else `household`.
+
 ## Sync protocol
 
 ```mermaid
@@ -113,6 +115,11 @@ sequenceDiagram
 4. **Reconciled entries are protected**: a remote edit of an entry that is `reconciled` locally produces a conflict instead of applying silently.
 5. **Semantic duplicates**: two devices importing the same bank statement produce different IDs; after merge, core runs dedup (fingerprint) and raises `possible_duplicate` conflicts — or, if both rows came from imports of the same `file_sha256`, merges automatically keeping the lower UUID.
 6. **Derived data is never synced.** Balances and reports are recomputed locally, so they cannot conflict.
+7. **Constraints during apply**: a batch is applied in one transaction with `PRAGMA defer_foreign_keys = ON`, so parents and children may arrive in any order; foreign keys are checked at commit.
+8. **Duplicate names**: a remote row that breaks a name key (live sibling categories with the same `name_key`; tags, payees or import profiles with the same name) is still applied. The row with the **higher id** is renamed `"<name> (2)"` (then 3, …) by a local write, and `sync_conflict(kind = duplicate_name)` lets the user merge them. Both devices pick the same row.
+9. **Category cycles**: concurrent moves can form a cycle no single device wrote. After a batch, the merger walks the `parent_id` chain of every category whose parent changed. On a cycle, it makes the member with the highest `parent_id` field clock `(hlc, device)` a root of its kind, and raises `sync_conflict(kind = tree_cycle)`. Both devices hold the same field clocks, so they detach the same node.
+10. **Merged categories**: a row that arrives referencing a category deleted by merge (`merged_into_id` set) is re-pointed, by a local write, to the end of the `merged_into_id` chain. A chain ending in a category deleted without a merge raises `edit_vs_delete`.
+11. **Seeded rows are not changes**: rows written by the seeder (`hlc = 0`, `hlc_device = 'seed'`, [ADR-0008](adr/0008-deterministic-ids-for-seeded-rows.md)) are never in `change_log`. Each device seeds them itself, with identical ids.
 
 ## Testing strategy
 - Property tests: random interleavings of operations on 2–3 simulated peers with random partitions ⇒ all peers converge to identical tables (excluding local-only), and every non-conflicted entry is balanced.

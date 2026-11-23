@@ -28,5 +28,10 @@ export default defineConfig({
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
     css: false,
+    // Node 25+ defines its own `localStorage` global, which shadows jsdom's; turn it off
+    // where it exists (older Nodes don't know the flag).
+    poolOptions: {
+      forks: { execArgv: "localStorage" in globalThis ? ["--no-experimental-webstorage"] : [] },
+    },
   },
 });

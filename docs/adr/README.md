@@ -9,5 +9,10 @@
 | [0005](0005-hlc-per-field-lww.md) | HLC + per-field LWW change log | Accepted |
 | [0006](0006-ai-optional-extractor-only.md) | AI is optional and only proposes | Accepted |
 | [0007](0007-devserver-http-shell.md) | Dev-only HTTP shell for Docker development | Accepted |
+| [0008](0008-deterministic-ids-for-seeded-rows.md) | Deterministic ids for seeded rows | Accepted |
+| [0009](0009-posting-legs-and-per-leg-status.md) | Posting legs and per-leg status | Accepted |
+| [0010](0010-change-log-from-m1.md) | Change log written from M1 | Accepted |
+| [0011](0011-opening-balance-fx-leg.md) | Opening balances balance against an FX-trading leg | Accepted |
+| [0012](0012-sync-visibility-decided-at-send-time.md) | Sync visibility is decided at send time | Accepted |
 
 Template: Context → Decision → Consequences.
