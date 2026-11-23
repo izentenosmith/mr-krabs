@@ -119,6 +119,7 @@ Minimum 12px anywhere. Body is 14px — between macOS native (13) and the web mi
 │ Transacc.  │  content (tables, matrices, charts)      │
 │ Presupuesto│                                          │
 │ Calendario │                                          │
+│ Categorías │                                          │
 │ Importar   │                                          │
 │ Reportes   │                                          │
 │ ─ Cuentas ─│                                          │
@@ -185,6 +186,22 @@ Focus ring always visible: `ring-[3px] ring-ring/50` (Tailwind `focus-visible:`)
 - It switches at once (no reload, no confirmation, no toast), and keyboard focus stays on the toggle.
 - Not in the command palette or the toolbar.
 
+### 5.4 Pages and period stepper (M2)
+- **Sidebar order** (Lucide icon): Resumen (`LayoutDashboard`) · Transacciones
+  (`ArrowLeftRight`) · Presupuesto (`Table2`) · Calendario (`CalendarDays`) · Categorías
+  (`FolderTree`). Importar and Reportes join when their milestones land. Items use §5's
+  active style.
+- **Period stepper** (Presupuesto, Calendario, Resumen): in the page's header row, a
+  ghost icon button `ChevronLeft` ("Mes anterior" / "Año anterior"), the period label as a
+  ghost button (`text-sm font-medium`, min-width 144px, centered; month name and year in
+  the UI language, e.g. "Noviembre 2026"), and `ChevronRight` ("Mes siguiente" / "Año
+  siguiente"). Clicking the label returns to the current period. The period is kept per
+  window while moving between these pages.
+- **Page header row** (44px): page title (§3) on the left, the page's controls after it,
+  the page's single primary button last.
+- **Shared page rules** (matrix, calendar and dashboard pages in `pages/`): the excluded-
+  currency notice (DEC-29 Q8) and credits are specified once in `pages/budget.md` and reused.
+
 ## 6. Motion
 
 - CSS transitions only (no animation library).
@@ -208,7 +225,7 @@ Card, Table, Dialog, Sheet, Command, ToggleGroup, Select, Input, Tooltip, Sonner
 | `ScopeBadge` | Personal/Hogar icon + label + scope color. |
 | `StatusBadge` | Pendiente/Liquidado/Conciliado/Propuesto per §2. |
 | `BudgetBar` | Progress bar + "% usado" + "$X restante/excedido" text; over budget → `destructive` + icon. |
-| `VarianceCell` | Signed Δ with ▲/▼ icon; for the plan-vs-real matrix (FR-RP-07). |
+| `VarianceCell` | Signed Δ with ▲/▼ icon; for the plan-vs-real matrix (FR-RP-07). States in `pages/budget.md`. |
 | `ProposedRow` | AI-proposed import row: Sparkles + "Propuesto", tinted until approved. |
 
 Lists over 50 rows are virtualized (NFR-05).
@@ -243,9 +260,50 @@ Lists over 50 rows are virtualized (NFR-05).
   (in/out). Net worth → line.
 - Every chart ships with: a table view of the same series, an `aria-label` summary,
   visible legend, tooltips reachable by keyboard.
-- Series values arrive pre-computed from Rust; the UI renders only.
-- The categorical chart palette is defined (and contrast-checked) when the first chart
-  lands (M2 dashboard); it must not reuse `destructive`/`success` for non-semantic series.
+- Series values arrive pre-computed from Rust; the UI renders only. Every number shown
+  (tooltip, label, table) is a `display` string; there are no numeric axis tick labels,
+  because they would need number formatting in TS. The chart may read `minor` as a number
+  only to position marks.
+- Marks: bars 4px radius on the data end, anchored to the baseline; 2px `card` gap between
+  stacked segments; lines 2px; markers 8px with a 2px `card` ring; gridlines `border`,
+  horizontal only. Legend and labels use text tokens (`foreground`, `muted-foreground`),
+  never the series color.
+- **No dual axes.** Two measures of different scale are two charts.
+
+### 8.1 Chart palette
+
+Categorical series take `chart-1`, `chart-2`, `chart-3` **in this order**, and a series
+keeps its color wherever it appears (color follows the entity, never its rank). These are
+**marks only, never text**. A chart needs at most three colored series; a fourth becomes a
+different mark (a `foreground` line, as Flujo libre), a facet, or folds into "Otros" drawn
+in `muted-foreground`. A single-series chart uses the color of the entity it shows (for
+example `chart-2` for spending).
+
+| Token | Light | Dark | Hue |
+|---|---|---|---|
+| `chart-1` | `#2A92BB` | `#2A92BB` | sky blue |
+| `chart-2` | `#5C48A2` | `#876FE4` | violet |
+| `chart-3` | `#B54696` | `#B54696` | magenta |
+
+Chosen to stay clear of the reserved colors: no green (`success`), red (`destructive`),
+amber (`warning`) or coral (`brand`). Measured 2026-11-23 (WCAG 2.x contrast; OKLab ΔE ×100,
+CVD simulated with Machado 2009):
+
+| Check | Light (`card` / `background`) | Dark (`card` / `background`) |
+|---|---|---|
+| `chart-1` contrast | 3.54 / 3.39 | 4.53 / 5.04 |
+| `chart-2` contrast | 7.23 / 6.91 | 4.15 / 4.61 |
+| `chart-3` contrast | 4.91 / 4.69 | 3.27 / 3.64 |
+| Flujo libre line (`foreground`) | 17.85 / 17.06 | 14.65 / 16.30 |
+| Normal-vision ΔE, worst pair (all pairs) | 16.7 (2↔3) | 15.1 (1↔2) |
+| Protan/deutan ΔE, worst pair (all pairs) | 6.0 (1↔3) | 6.0 (1↔3) |
+| ΔE to nearest reserved color | 16.0 (`chart-1`↔`success`, `chart-3`↔`destructive`) | 18.6 (`chart-3`↔`destructive`) |
+
+Every mark is ≥ 3:1 against both surfaces (WCAG 1.4.11). The 1↔3 pair sits in the
+colorblind floor band (6–8), so **identity is never color alone**: a visible legend on
+every multi-series chart, position (in the cash-flow chart income is above zero and saving
+below), the table view, and tooltips. `apps/desktop/src/chart-palette.test.ts` keeps the
+contrast and the no-reuse rule true; re-measure and update this table when a value changes.
 
 ---
 

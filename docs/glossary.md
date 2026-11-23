@@ -20,3 +20,10 @@
 | HLC | Reloj lógico híbrido | Clock used to order sync changes. |
 | Tombstone | Lápida | Soft-delete marker kept for sync. |
 | Staging | Área de revisión | Imported rows awaiting approval. |
+| Actual | Real | What a category really moved in a period: the net of its category legs by entry date (expenses minus refunds; income likewise), in the base currency. Transfers never count (DEC-29 Q7). |
+| Planned (budget) | Planificado (presupuesto) | The amount set for a category in a month and scope (`budget_line`); one live line per slot (DEC-30 Q9). |
+| Saved / invested | Ahorro e inversión | Net transfers from non-savings accounts into savings/investment-kind accounts in a period. Card payments are not saving (DEC-29 Q7). |
+| Free cash flow | Flujo libre | Income − expenses − saved/invested for a period (DEC-29 Q7). |
+| Savings rate | Tasa de ahorro | Saved/invested ÷ income, as integer basis points computed in Rust (DEC-29 Q7). |
+| Roll-up | Consolidación (subtotal) | A parent category's planned and actual amounts include its own and all its descendants', at any depth (FR-BU-08, DEC-30 Q9). |
+| Credit (in a category) | Crédito | An actual below zero: refunds larger than spending in the period. |
