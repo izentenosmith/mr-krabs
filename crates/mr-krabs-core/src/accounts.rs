@@ -209,7 +209,7 @@ impl App {
     }
 
     /// Balance of every account with a counted leg (no SQL aggregation, rule 3).
-    fn balances(&self) -> Result<BTreeMap<String, Money>, ApiError> {
+    pub(crate) fn balances(&self) -> Result<BTreeMap<String, Money>, ApiError> {
         let rows = self
             .store
             .account_legs()?

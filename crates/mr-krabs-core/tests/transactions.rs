@@ -1154,3 +1154,50 @@ fn journey_record_expenses_and_a_transfer_edit_delete_and_undo_and_see_the_balan
     assert_eq!(env.balance(&checking), "848000");
     assert_eq!(env.balance(&savings), "100000");
 }
+
+// ─────────────────────── remediation (tyr-verdict iteration 1) ───────────────────────
+
+const I64_MAX_CLP: &str = "9.223.372.036.854.775.807";
+
+#[test]
+fn r_f1_a_change_that_would_overflow_a_balance_is_refused_and_writes_nothing() {
+    let mut env = Env::new("rf1");
+    let a = env.account("A", None, false);
+    let e = env.create_id(expense(&a, "1", "2026-11-01"));
+    env.create(income(&a, I64_MAX_CLP, "2026-11-02"));
+    let j = env.create_id(income(&a, "1", "2026-11-03"));
+    assert_eq!(env.balance(&a), "9223372036854775807");
+
+    let before = env.state();
+    let e1 = env.err(
+        "tx_create",
+        json!({ "input": income(&a, "1", "2026-11-04") }),
+    );
+    field_error(
+        &e1,
+        ErrorCode::Validation,
+        "amount",
+        "errors.field.outOfRange",
+    );
+    assert_eq!(env.state(), before);
+
+    let e2 = env.err(
+        "tx_update",
+        json!({ "id": e, "input": income(&a, "1", "2026-11-01") }),
+    );
+    field_error(
+        &e2,
+        ErrorCode::Validation,
+        "amount",
+        "errors.field.outOfRange",
+    );
+    assert_eq!(env.state(), before);
+
+    env.ok("tx_delete", json!({ "id": j }));
+    env.create(income(&a, "1", "2026-11-05"));
+    let before = env.state();
+    let e3 = env.err("tx_restore", json!({ "id": j }));
+    assert_eq!(e3.code, ErrorCode::Validation, "{e3}");
+    assert_eq!(env.state(), before);
+    env.ok("account_list", json!({ "query": { "view": "combined" } }));
+}

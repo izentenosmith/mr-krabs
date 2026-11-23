@@ -149,7 +149,7 @@ impl App {
                         vis,
                     )?;
                 }
-                Ok::<_, ApiError>(())
+                self.ensure_balances(true)
             })?;
             tracing::debug!(entry = %id, "transaction updated");
             self.detail(&id)
@@ -235,7 +235,7 @@ impl App {
                     vis,
                 )?;
             }
-            Ok::<_, ApiError>(())
+            self.ensure_balances(false)
         })?;
         tracing::debug!(entry = %entry.id, deleted, "transaction deleted flag set");
         Ok(())
@@ -313,8 +313,22 @@ impl App {
             .map(|p| posting_row(new_id(), &row.id, p, LegStatus::Cleared))
             .collect();
         let vis = self.visibility(&postings)?;
-        self.store
-            .write(|w| w.insert_entry(row, &rows, vis).map_err(ApiError::from))
+        self.store.write(|w| {
+            w.insert_entry(row, &rows, vis)?;
+            self.ensure_balances(input.is_some())
+        })
+    }
+
+    /// Run inside a write, after it: every balance must still be representable, or the write
+    /// rolls back (F1). The reads see the transaction's own rows (one connection).
+    fn ensure_balances(&self, has_input: bool) -> Result<(), ApiError> {
+        match self.balances() {
+            Ok(_) => Ok(()),
+            Err(e) if has_input && e.code == ErrorCode::Validation => {
+                Err(e.with_field("amount", "errors.field.outOfRange"))
+            }
+            Err(e) => Err(e),
+        }
     }
 
     /// The accounts the postings touch, live ones only (X-6): an unknown id stays out, so
