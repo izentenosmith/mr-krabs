@@ -14,8 +14,8 @@ use mrk_store::{EntryFilter, EntryRow, PostingRow, ScopeFilter, Visibility};
 use crate::accounts::OPENING_BALANCE;
 use crate::api::{self, NewTxInput, Page, TxDetailDto, TxKind, TxQuery, TxRowDto, View};
 use crate::support::{
-    Fields, check_id, command, domain_error, field_error, new_id, parse_amount, posting_row,
-    stored_leg,
+    Fields, check_id, command, currency_code, domain_error, field_error, new_id, parse_amount,
+    posting_row, stored_leg,
 };
 use crate::{ApiError, App, ErrorCode, MoneyDto};
 
@@ -328,7 +328,7 @@ impl App {
                     ctx.accounts.insert(
                         a.id.clone(),
                         AccountInfo {
-                            currency: crate::support::currency_code(&a.currency_code)?,
+                            currency: currency_code(&a.currency_code)?,
                             archived: a.is_archived,
                         },
                     );
