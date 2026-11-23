@@ -14,11 +14,13 @@ mod cash_flow;
 mod flows;
 mod matrix;
 mod period;
+mod spending;
 mod tree;
 
 pub use calendar::month_calendar;
 pub use cash_flow::cash_flow;
 pub use matrix::budget_matrix;
+pub use spending::spending;
 pub use tree::{CategoryTree, TreeRow};
 
 /// An account's kind, as stored in `account.kind`.
@@ -315,13 +317,4 @@ pub struct Spending {
     pub rows: Vec<SpendingRow>,
     pub total: Money,
     pub excluded: Vec<Excluded>,
-}
-
-pub fn spending(
-    _data: &ReportData,
-    _viewer: &Viewer,
-    _from: &str,
-    _to: &str,
-) -> Result<Spending, ReportError> {
-    unimplemented!("R0: spending")
 }
