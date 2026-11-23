@@ -121,6 +121,9 @@ async fn shutdown_signal() {
 }
 
 #[cfg(test)]
+mod journey;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use axum::body::Body;
