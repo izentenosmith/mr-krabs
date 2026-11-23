@@ -185,14 +185,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn m1_stubs_are_501_not_implemented() {
+    async fn tx_list_is_served_over_http() {
+        // S5 replaced the last M1 stub; NOT_IMPLEMENTED → 501 stays in `status_for`.
         let req = Request::post("/api/invoke/tx_list")
             .header("content-type", "application/json")
             .body(Body::from(r#"{"query":{"view":"combined"}}"#))
             .unwrap();
         let resp = test_router().oneshot(req).await.unwrap();
-        assert_eq!(resp.status(), StatusCode::NOT_IMPLEMENTED);
-        assert_eq!(body_json(resp).await["code"], "NOT_IMPLEMENTED");
+        assert_eq!(resp.status(), StatusCode::OK);
+        let page = body_json(resp).await;
+        assert_eq!(page["items"], Value::Array(Vec::new()));
+        assert_eq!(page["nextCursor"], Value::Null);
     }
 
     #[tokio::test]
@@ -210,6 +213,10 @@ mod tests {
     #[test]
     fn new_error_codes_map_to_http_statuses() {
         assert_eq!(status_for(ErrorCode::Conflict), StatusCode::CONFLICT);
+        assert_eq!(
+            status_for(ErrorCode::NotImplemented),
+            StatusCode::NOT_IMPLEMENTED
+        );
         assert_eq!(
             status_for(ErrorCode::CurrencyMismatch),
             StatusCode::UNPROCESSABLE_ENTITY

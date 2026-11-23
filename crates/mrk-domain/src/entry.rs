@@ -317,7 +317,7 @@ pub fn plan_update(
 
 /// Splits a stored two-leg entry into (account leg, counter leg). The account leg is the only
 /// account leg or, for a transfer, the one money leaves (negative).
-fn roles(legs: &[StoredLeg]) -> Result<(&StoredLeg, &StoredLeg), DomainError> {
+pub fn roles(legs: &[StoredLeg]) -> Result<(&StoredLeg, &StoredLeg), DomainError> {
     let [a, b] = legs else {
         return Err(DomainError::UnsupportedEntryShape);
     };

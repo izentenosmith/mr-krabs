@@ -10,8 +10,7 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 use crate::api::{
-    AccountInput, AccountListQuery, CategoryTreeQuery, HouseholdInput, NewTxInput, Page,
-    TxDetailDto, TxQuery, TxRowDto,
+    AccountInput, AccountListQuery, CategoryTreeQuery, HouseholdInput, NewTxInput, TxQuery,
 };
 use crate::{ApiError, App, ErrorCode};
 
@@ -124,31 +123,6 @@ pub fn dispatch(app: &mut App, name: &str, args: Value) -> Result<Value, ApiErro
             ErrorCode::UnknownCommand,
             format!("unknown command {other:?}"),
         )),
-    }
-}
-
-/// M1 commands whose slice has not landed yet (design Q4, Q12). Each returns
-/// `NOT_IMPLEMENTED`; the slice that builds it replaces the body (and may move the method
-/// next to the rest of `App`), keeping the signature the shells and bindings rely on.
-/// Household and account commands live in `household.rs` / `accounts.rs` (S4).
-impl App {
-    pub fn tx_create(&mut self, _input: NewTxInput) -> Result<TxDetailDto, ApiError> {
-        Err(ApiError::not_implemented("tx_create"))
-    }
-    pub fn tx_get(&self, _id: String) -> Result<TxDetailDto, ApiError> {
-        Err(ApiError::not_implemented("tx_get"))
-    }
-    pub fn tx_list(&self, _query: TxQuery) -> Result<Page<TxRowDto>, ApiError> {
-        Err(ApiError::not_implemented("tx_list"))
-    }
-    pub fn tx_update(&mut self, _id: String, _input: NewTxInput) -> Result<TxDetailDto, ApiError> {
-        Err(ApiError::not_implemented("tx_update"))
-    }
-    pub fn tx_delete(&mut self, _id: String) -> Result<(), ApiError> {
-        Err(ApiError::not_implemented("tx_delete"))
-    }
-    pub fn tx_restore(&mut self, _id: String) -> Result<(), ApiError> {
-        Err(ApiError::not_implemented("tx_restore"))
     }
 }
 
@@ -269,19 +243,6 @@ mod tests {
         listed.sort_unstable();
         expected.sort_unstable();
         assert_eq!(listed, expected);
-    }
-
-    #[test]
-    fn transaction_commands_with_valid_args_are_not_implemented_yet() {
-        let mut app = app();
-        for (name, args) in m1_stub_calls()
-            .into_iter()
-            .filter(|(n, _)| n.starts_with("tx_"))
-        {
-            let e = dispatch(&mut app, name, args).unwrap_err();
-            assert_eq!(e.code, ErrorCode::NotImplemented, "{name}: {e}");
-            assert!(e.message.contains(name), "{name}: {}", e.message);
-        }
     }
 
     #[test]

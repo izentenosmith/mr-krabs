@@ -18,6 +18,6 @@ pub use category::{
 pub use date::validate_civil_date;
 pub use entry::{
     AccountInfo, JournalEntry, LedgerContext, LegField, LegStatus, LegUpdate, NewTx, StoredLeg,
-    TxType, UpdatePlan, ensure_unlocked, plan_update,
+    TxType, UpdatePlan, ensure_unlocked, plan_update, roles,
 };
 pub use ledger::{DomainError, EntryKind, Leg, Posting, classify, validate_balanced};

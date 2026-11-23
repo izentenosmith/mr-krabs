@@ -91,6 +91,21 @@ pub struct CategoryMergeWrite {
     pub sum_budget_lines: Vec<(String, i64, String)>,
 }
 
+const CATEGORY_COLS: &str = "id, parent_id, kind, name, icon, is_archived, sort_order, deleted";
+
+fn category_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<CategoryRow> {
+    Ok(CategoryRow {
+        id: r.get(0)?,
+        parent_id: r.get(1)?,
+        kind: r.get(2)?,
+        name: r.get(3)?,
+        icon: r.get(4)?,
+        is_archived: r.get(5)?,
+        sort_order: r.get(6)?,
+        deleted: r.get(7)?,
+    })
+}
+
 impl Store {
     /// Inserts the default categories and accounts in their own transaction (see
     /// [`Write::seed_defaults`]).
@@ -104,25 +119,25 @@ impl Store {
 
     /// Every category row, live and deleted, for the tree rules.
     pub fn category_rows(&self) -> Result<Vec<CategoryRow>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT id, parent_id, kind, name, icon, is_archived, sort_order, deleted \
-                 FROM category ORDER BY id",
-        )?;
+        let mut stmt = self
+            .conn
+            .prepare(&format!("SELECT {CATEGORY_COLS} FROM category ORDER BY id"))?;
         let rows = stmt
-            .query_map([], |r| {
-                Ok(CategoryRow {
-                    id: r.get(0)?,
-                    parent_id: r.get(1)?,
-                    kind: r.get(2)?,
-                    name: r.get(3)?,
-                    icon: r.get(4)?,
-                    is_archived: r.get(5)?,
-                    sort_order: r.get(6)?,
-                    deleted: r.get(7)?,
-                })
-            })?
+            .query_map([], category_row)?
             .collect::<std::result::Result<_, _>>()?;
         Ok(rows)
+    }
+
+    /// A category by id, live or deleted.
+    pub fn category(&self, id: &str) -> Result<Option<CategoryRow>> {
+        Ok(self
+            .conn
+            .query_row(
+                &format!("SELECT {CATEGORY_COLS} FROM category WHERE id = ?1"),
+                [id],
+                category_row,
+            )
+            .optional()?)
     }
 
     /// Live budget lines of the given categories.
