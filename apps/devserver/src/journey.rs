@@ -80,7 +80,7 @@ fn find_category<'a>(nodes: &'a Value, name: &str) -> Option<&'a Value> {
     })
 }
 
-/// `account id → (balance minor, balance display)` of every listed account.
+/// `(account id, balance minor, balance display)` of every listed account, sorted by id.
 async fn balances(app: &Router) -> Vec<(String, String, String)> {
     let list = post(
         app,
@@ -128,6 +128,7 @@ async fn jrn1_m1_done_when_over_http_on_a_file_db() {
     )
     .await;
     assert_eq!(household["baseCurrency"], "CLP");
+    assert_eq!(household["locale"], "es-CL");
 
     // A checking account with its opening balance.
     let checking = post(
