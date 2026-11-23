@@ -73,10 +73,205 @@ export type BootstrapDto = {
 	schemaVersion: number,
 };
 
+export type BreakdownDto = {
+	view: View,
+	baseCurrency: string,
+	rows: BreakdownRowDto[],
+	total: MoneyDto,
+	excluded: ExcludedDto[],
+};
+
+/**  One category's spending (rolled up) and its share of `total`. */
+export type BreakdownRowDto = {
+	category: ReportCategoryDto,
+	amount: MoneyDto,
+	/**  Basis points of `total`; `null` when `total` is 0. */
+	shareBp: number | null,
+};
+
+/**
+ *  A budget line as stored. `budget_set` answers `null` instead when it deleted the line
+ *  (or there was none to delete).
+ */
+export type BudgetCellDto = {
+	id: string,
+	period: string,
+	categoryId: string,
+	scope: BudgetScope,
+	/**  Set for personal lines only. */
+	memberId: string | null,
+	amount: MoneyDto,
+};
+
+/**
+ *  `budget_copy_month`: copies `from`'s live lines into `to` (both `YYYY-MM`). Only empty
+ *  slots are filled unless `overwrite` (default `false`). Answers the number of lines
+ *  written.
+ */
+export type BudgetCopyInput = {
+	from: string,
+	to: string,
+	overwrite?: boolean | null,
+};
+
+/**  `budget_matrix`: a year of plan vs real (FR-BU-08). */
+export type BudgetMatrixDto = {
+	year: number,
+	view: View,
+	baseCurrency: string,
+	rows: BudgetMatrixRowDto[],
+	summary: BudgetMatrixSummaryDto,
+	excluded: ExcludedDto[],
+};
+
+/**  `budget_matrix`: one calendar year. */
+export type BudgetMatrixQuery = {
+	/**  1970–9999. */
+	year: number,
+	view: View,
+};
+
+/**  One category row of the matrix: 12 months, January first. */
+export type BudgetMatrixRowDto = {
+	category: ReportCategoryDto,
+	/**  Planned (rolled up), actual (rolled up) and diff, per month. */
+	months: PlanActualDto[],
+	/**  This category's own planned line per month (no descendants), for in-cell editing. */
+	ownPlanned: MoneyDto[],
+};
+
+/**  The matrix's summary rows, 12 months each, January first. */
+export type BudgetMatrixSummaryDto = {
+	income: PlanActualDto[],
+	expense: PlanActualDto[],
+	saved: PlanActualDto[],
+	freeCashFlow: PlanActualDto[],
+	totalExpenses: PlanActualDto[],
+};
+
 /**  How installment purchases count against budgets (docs/03). */
 export type BudgetMode = "at_purchase" | "per_installment";
 
+/**  Whose budget line: the household's, or my personal one (the member is always me). */
+export type BudgetScope = "personal" | "household";
+
+/**
+ *  `budget_set`: upserts the one live line for `(period, categoryId, scope, me)` (DEC-30
+ *  Q9). `amount` is typed text in the household's base currency; `""` or zero deletes the
+ *  line.
+ */
+export type BudgetSetInput = {
+	/**  `YYYY-MM`. */
+	period: string,
+	categoryId: string,
+	scope: BudgetScope,
+	amount: string,
+};
+
+/**  Per-day totals of the calendar's root rows, by kind (`daysInMonth` entries each). */
+export type CalendarDayTotalsDto = {
+	income: MoneyDto[],
+	expense: MoneyDto[],
+};
+
+/**  `report_month_calendar`: categories × days for one month. */
+export type CalendarDto = {
+	month: string,
+	view: View,
+	baseCurrency: string,
+	daysInMonth: number,
+	rows: CalendarRowDto[],
+	dayTotals: CalendarDayTotalsDto,
+	excluded: ExcludedDto[],
+};
+
+/**  One category row of the calendar: an actual per day of the month. */
+export type CalendarRowDto = {
+	category: ReportCategoryDto,
+	/**  `daysInMonth` entries, day 1 first. */
+	days: MoneyDto[],
+	total: MoneyDto,
+};
+
+export type CashFlowDto = {
+	view: View,
+	baseCurrency: string,
+	/**  One entry per month, `from` first. */
+	months: CashFlowMonthDto[],
+	excluded: ExcludedDto[],
+};
+
+/**  One month of cash flow: free cash flow = income − expense − saved (DEC-29 Q7). */
+export type CashFlowMonthDto = {
+	/**  `YYYY-MM`. */
+	month: string,
+	income: MoneyDto,
+	expense: MoneyDto,
+	saved: MoneyDto,
+	freeCashFlow: MoneyDto,
+	/**  saved ÷ income in basis points; `null` when income is 0. */
+	savingsRateBp: number | null,
+};
+
+/**  `report_cash_flow`: monthly, `from`..=`to` (both `YYYY-MM`). */
+export type CashFlowQuery = {
+	from: string,
+	to: string,
+	view: View,
+};
+
+/**
+ *  `category_archive`: archive (cascades to the subtree for pickers) or unarchive. History
+ *  and reports keep archived categories.
+ */
+export type CategoryArchiveInput = {
+	id: string,
+	archived: boolean,
+};
+
+/**
+ *  `category_delete`: without `mergeIntoId` the category must be unused (else
+ *  `VALIDATION`); with it, its entries, budget lines and sub-categories move there first.
+ */
+export type CategoryDeleteInput = {
+	id: string,
+	mergeIntoId?: string | null,
+};
+
+/**  One category as written by `category_create`/`update`/`move`/`archive` (no children). */
+export type CategoryDto = {
+	id: string,
+	/**  `null` at a root. */
+	parentId: string | null,
+	kind: CategoryKind,
+	name: string,
+	icon: string | null,
+	isArchived: boolean,
+	sortOrder: number,
+};
+
+/**
+ *  `category_create`: a new category of `kind`, at the root or under `parentId` (same kind).
+ *  `name` is trimmed, 1–80 characters, unique among its live siblings (DEC-30 Q10).
+ */
+export type CategoryInput = {
+	kind: CategoryKind,
+	parentId?: string | null,
+	name: string,
+	icon?: string | null,
+};
+
 export type CategoryKind = "expense" | "income";
+
+/**
+ *  `category_move`: reparent (`parentId` omitted or `null` = root) and place at `index`
+ *  (0-based) among the new siblings. Cycles and a different kind are `VALIDATION`.
+ */
+export type CategoryMoveInput = {
+	id: string,
+	parentId?: string | null,
+	index: number,
+};
 
 /**
  *  One node of the live category tree (any depth): seeded and user categories, archived
@@ -110,6 +305,16 @@ export type CategoryTxInput = {
 	memo?: string | null,
 };
 
+/**
+ *  `category_update`: rename and/or change the icon; kind is immutable. An omitted (or
+ *  `null`) field is left unchanged; an empty `icon` clears it.
+ */
+export type CategoryUpdateInput = {
+	id: string,
+	name?: string | null,
+	icon?: string | null,
+};
+
 export type ErrorCode = "VALIDATION" | "NOT_FOUND" | "UNKNOWN_COMMAND" | 
 /**  The command is in the catalogue but its slice has not landed yet (M1). */
 "NOT_IMPLEMENTED" | 
@@ -119,6 +324,12 @@ export type ErrorCode = "VALIDATION" | "NOT_FOUND" | "UNKNOWN_COMMAND" |
 "UNBALANCED_ENTRY" | 
 /**  The change collides with existing state (e.g. editing a reconciled leg). */
 "CONFLICT" | "INTERNAL";
+
+/**  Postings left out of a report because they are not in the base currency. */
+export type ExcludedDto = {
+	currency: string,
+	count: number,
+};
 
 export type HealthDto = {
 	status: string,
@@ -171,6 +382,12 @@ export type MoneyInput = {
 	currency: string,
 };
 
+export type MonthCalendarQuery = {
+	/**  `YYYY-MM`. */
+	month: string,
+	view: View,
+};
+
 /**  A new (or edited) two-leg transaction; core expands it into balanced postings (design Q1). */
 export type NewTxInput = {
 	type: "expense",
@@ -197,10 +414,37 @@ export type Page<T> = {
 	nextCursor: string | null,
 };
 
+/**  Planned vs actual for one month; `diff` = planned − actual. */
+export type PlanActualDto = {
+	planned: MoneyDto,
+	actual: MoneyDto,
+	diff: MoneyDto,
+};
+
+/**  A category row of a report: where it sits in the tree. */
+export type ReportCategoryDto = {
+	id: string,
+	parentId: string | null,
+	/**  0 at a root. */
+	depth: number,
+	kind: CategoryKind,
+	name: string,
+	isArchived: boolean,
+	/**  Has sub-categories: its amounts are roll-up subtotals. */
+	isGroup: boolean,
+};
+
 export type SettingsDto = {
 	baseCurrency: string,
 	locale: Locale,
 	budgetMode: BudgetMode,
+};
+
+/**  `report_spending`: expense by category, `from`..=`to` (both `YYYY-MM`). */
+export type SpendingQuery = {
+	from: string,
+	to: string,
+	view: View,
 };
 
 /**  Money moved between two of the household's accounts in the same currency. */
@@ -238,6 +482,8 @@ export type TxKind = "expense" | "income" | "transfer" | "opening_balance";
 export type TxQuery = {
 	view: View,
 	accountId?: string | null,
+	/**  Entries with a leg in this category or any of its descendants (drill-down). */
+	categoryId?: string | null,
 	/**  Inclusive civil dates. */
 	from?: string | null,
 	to?: string | null,

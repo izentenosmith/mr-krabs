@@ -5,8 +5,11 @@ use std::sync::Mutex;
 
 use mr_krabs_core::api::{
     AccountDetailDto, AccountDto, AccountInput, AccountListQuery, AccountSummaryDto, BootstrapDto,
-    CategoryNodeDto, CategoryTreeQuery, HouseholdDto, HouseholdInput, NewTxInput, Page,
-    SettingsDto, TxDetailDto, TxQuery, TxRowDto,
+    BreakdownDto, BudgetCellDto, BudgetCopyInput, BudgetMatrixDto, BudgetMatrixQuery,
+    BudgetSetInput, CalendarDto, CashFlowDto, CashFlowQuery, CategoryArchiveInput,
+    CategoryDeleteInput, CategoryDto, CategoryInput, CategoryMoveInput, CategoryNodeDto,
+    CategoryTreeQuery, CategoryUpdateInput, HouseholdDto, HouseholdInput, MonthCalendarQuery,
+    NewTxInput, Page, SettingsDto, SpendingQuery, TxDetailDto, TxQuery, TxRowDto,
 };
 use mr_krabs_core::{ApiError, App, HealthDto, MoneyDto, MoneyInput};
 use tauri::{Manager, State};
@@ -135,6 +138,78 @@ fn tx_restore(core: State<'_, Core>, id: String) -> Result<(), ApiError> {
     with_core_mut(&core, |app| app.tx_restore(id))
 }
 
+#[tauri::command]
+fn category_create(core: State<'_, Core>, input: CategoryInput) -> Result<CategoryDto, ApiError> {
+    with_core_mut(&core, |app| app.category_create(input))
+}
+
+#[tauri::command]
+fn category_update(
+    core: State<'_, Core>,
+    input: CategoryUpdateInput,
+) -> Result<CategoryDto, ApiError> {
+    with_core_mut(&core, |app| app.category_update(input))
+}
+
+#[tauri::command]
+fn category_move(core: State<'_, Core>, input: CategoryMoveInput) -> Result<CategoryDto, ApiError> {
+    with_core_mut(&core, |app| app.category_move(input))
+}
+
+#[tauri::command]
+fn category_archive(
+    core: State<'_, Core>,
+    input: CategoryArchiveInput,
+) -> Result<CategoryDto, ApiError> {
+    with_core_mut(&core, |app| app.category_archive(input))
+}
+
+#[tauri::command]
+fn category_delete(core: State<'_, Core>, input: CategoryDeleteInput) -> Result<(), ApiError> {
+    with_core_mut(&core, |app| {
+        app.category_delete(&input.id, input.merge_into_id.as_deref())
+    })
+}
+
+#[tauri::command]
+fn budget_set(
+    core: State<'_, Core>,
+    input: BudgetSetInput,
+) -> Result<Option<BudgetCellDto>, ApiError> {
+    with_core_mut(&core, |app| app.budget_set(input))
+}
+
+#[tauri::command]
+fn budget_copy_month(core: State<'_, Core>, input: BudgetCopyInput) -> Result<u32, ApiError> {
+    with_core_mut(&core, |app| app.budget_copy_month(input))
+}
+
+#[tauri::command]
+fn budget_matrix(
+    core: State<'_, Core>,
+    query: BudgetMatrixQuery,
+) -> Result<BudgetMatrixDto, ApiError> {
+    with_core(&core, |app| app.budget_matrix(query))
+}
+
+#[tauri::command]
+fn report_month_calendar(
+    core: State<'_, Core>,
+    query: MonthCalendarQuery,
+) -> Result<CalendarDto, ApiError> {
+    with_core(&core, |app| app.report_month_calendar(query))
+}
+
+#[tauri::command]
+fn report_cash_flow(core: State<'_, Core>, query: CashFlowQuery) -> Result<CashFlowDto, ApiError> {
+    with_core(&core, |app| app.report_cash_flow(query))
+}
+
+#[tauri::command]
+fn report_spending(core: State<'_, Core>, query: SpendingQuery) -> Result<BreakdownDto, ApiError> {
+    with_core(&core, |app| app.report_spending(query))
+}
+
 /// Daily-rotated local log file; no remote sink (docs/02-architecture.md). `RUST_LOG`
 /// overrides the default level. Never log amounts or descriptions at `info`.
 /// A logging failure must not stop the app from opening, so it is reported and skipped.
@@ -193,6 +268,17 @@ pub fn run() {
             tx_update,
             tx_delete,
             tx_restore,
+            category_create,
+            category_update,
+            category_move,
+            category_archive,
+            category_delete,
+            budget_set,
+            budget_copy_month,
+            budget_matrix,
+            report_month_calendar,
+            report_cash_flow,
+            report_spending,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Mr Krabs");

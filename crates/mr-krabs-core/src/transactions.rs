@@ -62,6 +62,11 @@ impl App {
 
     pub fn tx_list(&self, query: TxQuery) -> Result<Page<TxRowDto>, ApiError> {
         command("tx_list", || {
+            if query.category_id.is_some() {
+                // M2 report-commands builds the filter; refuse rather than ignore it, so no
+                // caller mistakes an unfiltered page for a filtered one.
+                return Err(ApiError::not_implemented("tx_list categoryId"));
+            }
             let limit = query.limit.unwrap_or(LIMIT_DEFAULT);
             let Some(filter) = self.list_filter(&query, limit)? else {
                 return Ok(Page {

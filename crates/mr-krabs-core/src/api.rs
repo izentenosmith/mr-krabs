@@ -333,6 +333,310 @@ pub struct CategoryNodeDto {
     pub children: Vec<CategoryNodeDto>,
 }
 
+/// One category as written by `category_create`/`update`/`move`/`archive` (no children).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CategoryDto {
+    pub id: String,
+    /// `null` at a root.
+    pub parent_id: Option<String>,
+    pub kind: CategoryKind,
+    pub name: String,
+    pub icon: Option<String>,
+    pub is_archived: bool,
+    pub sort_order: i32,
+}
+
+/// `category_create`: a new category of `kind`, at the root or under `parentId` (same kind).
+/// `name` is trimmed, 1–80 characters, unique among its live siblings (DEC-30 Q10).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CategoryInput {
+    pub kind: CategoryKind,
+    #[specta(optional)]
+    pub parent_id: Option<String>,
+    pub name: String,
+    #[specta(optional)]
+    pub icon: Option<String>,
+}
+
+/// `category_update`: rename and/or change the icon; kind is immutable. An omitted (or
+/// `null`) field is left unchanged; an empty `icon` clears it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CategoryUpdateInput {
+    pub id: String,
+    #[specta(optional)]
+    pub name: Option<String>,
+    #[specta(optional)]
+    pub icon: Option<String>,
+}
+
+/// `category_move`: reparent (`parentId` omitted or `null` = root) and place at `index`
+/// (0-based) among the new siblings. Cycles and a different kind are `VALIDATION`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CategoryMoveInput {
+    pub id: String,
+    #[specta(optional)]
+    pub parent_id: Option<String>,
+    pub index: u32,
+}
+
+/// `category_archive`: archive (cascades to the subtree for pickers) or unarchive. History
+/// and reports keep archived categories.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CategoryArchiveInput {
+    pub id: String,
+    pub archived: bool,
+}
+
+/// `category_delete`: without `mergeIntoId` the category must be unused (else
+/// `VALIDATION`); with it, its entries, budget lines and sub-categories move there first.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CategoryDeleteInput {
+    pub id: String,
+    #[specta(optional)]
+    pub merge_into_id: Option<String>,
+}
+
+// ───────────────────────────── budgets ─────────────────────────────
+
+/// Whose budget line: the household's, or my personal one (the member is always me).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum BudgetScope {
+    Personal,
+    Household,
+}
+
+/// `budget_set`: upserts the one live line for `(period, categoryId, scope, me)` (DEC-30
+/// Q9). `amount` is typed text in the household's base currency; `""` or zero deletes the
+/// line.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct BudgetSetInput {
+    /// `YYYY-MM`.
+    pub period: String,
+    pub category_id: String,
+    pub scope: BudgetScope,
+    pub amount: String,
+}
+
+/// A budget line as stored. `budget_set` answers `null` instead when it deleted the line
+/// (or there was none to delete).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct BudgetCellDto {
+    pub id: String,
+    pub period: String,
+    pub category_id: String,
+    pub scope: BudgetScope,
+    /// Set for personal lines only.
+    pub member_id: Option<String>,
+    pub amount: MoneyDto,
+}
+
+/// `budget_copy_month`: copies `from`'s live lines into `to` (both `YYYY-MM`). Only empty
+/// slots are filled unless `overwrite` (default `false`). Answers the number of lines
+/// written.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct BudgetCopyInput {
+    pub from: String,
+    pub to: String,
+    #[specta(optional)]
+    pub overwrite: Option<bool>,
+}
+
+// ───────────────────────────── reports ─────────────────────────────
+//
+// Every report totals the household's base currency only; postings in other currencies are
+// left out and counted in `excluded` (DEC-29 Q8). Actuals are by entry date, net of refunds,
+// and positive in the row's own direction (spent for expense, received for income); transfers
+// are never income or expense (DEC-29 Q7). A group row's amounts are its own plus all its
+// descendants' (roll-up, DEC-30 Q9). Rows are in category-tree order (depth-first, siblings
+// by sort order), archived categories included. Percentages are integer basis points
+// (10000 = 100 %), never floats.
+
+/// Postings left out of a report because they are not in the base currency.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ExcludedDto {
+    pub currency: String,
+    pub count: u32,
+}
+
+/// A category row of a report: where it sits in the tree.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ReportCategoryDto {
+    pub id: String,
+    pub parent_id: Option<String>,
+    /// 0 at a root.
+    pub depth: u32,
+    pub kind: CategoryKind,
+    pub name: String,
+    pub is_archived: bool,
+    /// Has sub-categories: its amounts are roll-up subtotals.
+    pub is_group: bool,
+}
+
+/// Planned vs actual for one month; `diff` = planned − actual.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanActualDto {
+    pub planned: MoneyDto,
+    pub actual: MoneyDto,
+    pub diff: MoneyDto,
+}
+
+/// `budget_matrix`: one calendar year.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct BudgetMatrixQuery {
+    /// 1970–9999.
+    pub year: u16,
+    pub view: View,
+}
+
+/// One category row of the matrix: 12 months, January first.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct BudgetMatrixRowDto {
+    pub category: ReportCategoryDto,
+    /// Planned (rolled up), actual (rolled up) and diff, per month.
+    pub months: Vec<PlanActualDto>,
+    /// This category's own planned line per month (no descendants), for in-cell editing.
+    pub own_planned: Vec<MoneyDto>,
+}
+
+/// The matrix's summary rows, 12 months each, January first.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct BudgetMatrixSummaryDto {
+    pub income: Vec<PlanActualDto>,
+    pub expense: Vec<PlanActualDto>,
+    pub saved: Vec<PlanActualDto>,
+    pub free_cash_flow: Vec<PlanActualDto>,
+    pub total_expenses: Vec<PlanActualDto>,
+}
+
+/// `budget_matrix`: a year of plan vs real (FR-BU-08).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct BudgetMatrixDto {
+    pub year: u16,
+    pub view: View,
+    pub base_currency: String,
+    pub rows: Vec<BudgetMatrixRowDto>,
+    pub summary: BudgetMatrixSummaryDto,
+    pub excluded: Vec<ExcludedDto>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct MonthCalendarQuery {
+    /// `YYYY-MM`.
+    pub month: String,
+    pub view: View,
+}
+
+/// One category row of the calendar: an actual per day of the month.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CalendarRowDto {
+    pub category: ReportCategoryDto,
+    /// `daysInMonth` entries, day 1 first.
+    pub days: Vec<MoneyDto>,
+    pub total: MoneyDto,
+}
+
+/// Per-day totals of the calendar's root rows, by kind (`daysInMonth` entries each).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CalendarDayTotalsDto {
+    pub income: Vec<MoneyDto>,
+    pub expense: Vec<MoneyDto>,
+}
+
+/// `report_month_calendar`: categories × days for one month.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CalendarDto {
+    pub month: String,
+    pub view: View,
+    pub base_currency: String,
+    pub days_in_month: u32,
+    pub rows: Vec<CalendarRowDto>,
+    pub day_totals: CalendarDayTotalsDto,
+    pub excluded: Vec<ExcludedDto>,
+}
+
+/// `report_cash_flow`: monthly, `from`..=`to` (both `YYYY-MM`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CashFlowQuery {
+    pub from: String,
+    pub to: String,
+    pub view: View,
+}
+
+/// One month of cash flow: free cash flow = income − expense − saved (DEC-29 Q7).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CashFlowMonthDto {
+    /// `YYYY-MM`.
+    pub month: String,
+    pub income: MoneyDto,
+    pub expense: MoneyDto,
+    pub saved: MoneyDto,
+    pub free_cash_flow: MoneyDto,
+    /// saved ÷ income in basis points; `null` when income is 0.
+    pub savings_rate_bp: Option<i32>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CashFlowDto {
+    pub view: View,
+    pub base_currency: String,
+    /// One entry per month, `from` first.
+    pub months: Vec<CashFlowMonthDto>,
+    pub excluded: Vec<ExcludedDto>,
+}
+
+/// `report_spending`: expense by category, `from`..=`to` (both `YYYY-MM`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct SpendingQuery {
+    pub from: String,
+    pub to: String,
+    pub view: View,
+}
+
+/// One category's spending (rolled up) and its share of `total`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct BreakdownRowDto {
+    pub category: ReportCategoryDto,
+    pub amount: MoneyDto,
+    /// Basis points of `total`; `null` when `total` is 0.
+    pub share_bp: Option<i32>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct BreakdownDto {
+    pub view: View,
+    pub base_currency: String,
+    pub rows: Vec<BreakdownRowDto>,
+    pub total: MoneyDto,
+    pub excluded: Vec<ExcludedDto>,
+}
+
 // ───────────────────────────── transactions ─────────────────────────────
 
 /// A new (or edited) two-leg transaction; core expands it into balanced postings (design Q1).
@@ -441,6 +745,9 @@ pub struct TxQuery {
     pub view: View,
     #[specta(optional)]
     pub account_id: Option<String>,
+    /// Entries with a leg in this category or any of its descendants (drill-down).
+    #[specta(optional)]
+    pub category_id: Option<String>,
     /// Inclusive civil dates.
     #[specta(optional)]
     pub from: Option<String>,
@@ -749,6 +1056,307 @@ mod tests {
         }))
         .unwrap();
         assert_eq!(h.locale, None);
+    }
+
+    fn category() -> ReportCategoryDto {
+        ReportCategoryDto {
+            id: "cat-1".into(),
+            parent_id: None,
+            depth: 0,
+            kind: CategoryKind::Expense,
+            name: "Alimentación".into(),
+            is_archived: false,
+            is_group: true,
+        }
+    }
+
+    #[test]
+    fn m2_inputs_parse_with_optionals_omitted() {
+        let c: CategoryInput =
+            serde_json::from_value(json!({ "kind": "income", "name": "Bono" })).unwrap();
+        assert_eq!((c.parent_id, c.icon), (None, None));
+        let u: CategoryUpdateInput = serde_json::from_value(json!({ "id": "c" })).unwrap();
+        assert_eq!((u.name, u.icon), (None, None));
+        let m: CategoryMoveInput =
+            serde_json::from_value(json!({ "id": "c", "index": 2 })).unwrap();
+        assert_eq!((m.parent_id, m.index), (None, 2));
+        let d: CategoryDeleteInput = serde_json::from_value(json!({ "id": "c" })).unwrap();
+        assert_eq!(d.merge_into_id, None);
+        let b: BudgetCopyInput =
+            serde_json::from_value(json!({ "from": "2026-10", "to": "2026-11" })).unwrap();
+        assert_eq!(b.overwrite, None);
+        let s: BudgetSetInput = serde_json::from_value(json!({
+            "period": "2026-11", "categoryId": "c", "scope": "personal", "amount": ""
+        }))
+        .unwrap();
+        assert_eq!(s.scope, BudgetScope::Personal);
+        let q: TxQuery =
+            serde_json::from_value(json!({ "view": "combined", "categoryId": "c" })).unwrap();
+        assert_eq!(q.category_id.as_deref(), Some("c"));
+        assert!(
+            serde_json::from_value::<BudgetMatrixQuery>(
+                json!({ "year": 70000, "view": "combined" })
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn category_wire_shape() {
+        let dto = CategoryDto {
+            id: "cat-2".into(),
+            parent_id: Some("cat-1".into()),
+            kind: CategoryKind::Expense,
+            name: "Supermercado".into(),
+            icon: None,
+            is_archived: false,
+            sort_order: 3,
+        };
+        insta::assert_json_snapshot!(dto, @r#"
+        {
+          "id": "cat-2",
+          "parentId": "cat-1",
+          "kind": "expense",
+          "name": "Supermercado",
+          "icon": null,
+          "isArchived": false,
+          "sortOrder": 3
+        }
+        "#);
+    }
+
+    #[test]
+    fn budget_cell_wire_shape() {
+        let dto = BudgetCellDto {
+            id: "bl-1".into(),
+            period: "2026-11".into(),
+            category_id: "cat-1".into(),
+            scope: BudgetScope::Household,
+            member_id: None,
+            amount: money("150000", "$150.000"),
+        };
+        insta::assert_json_snapshot!(dto, @r#"
+        {
+          "id": "bl-1",
+          "period": "2026-11",
+          "categoryId": "cat-1",
+          "scope": "household",
+          "memberId": null,
+          "amount": {
+            "minor": "150000",
+            "currency": "CLP",
+            "display": "$150.000"
+          }
+        }
+        "#);
+    }
+
+    #[test]
+    fn budget_matrix_wire_shape() {
+        let cell = PlanActualDto {
+            planned: money("150000", "$150.000"),
+            actual: money("120000", "$120.000"),
+            diff: money("30000", "$30.000"),
+        };
+        // One month instead of twelve keeps the snapshot readable; the shape is the same.
+        let dto = BudgetMatrixDto {
+            year: 2026,
+            view: View::Combined,
+            base_currency: "CLP".into(),
+            rows: vec![BudgetMatrixRowDto {
+                category: category(),
+                months: vec![cell.clone()],
+                own_planned: vec![money("0", "$0")],
+            }],
+            summary: BudgetMatrixSummaryDto {
+                income: vec![cell.clone()],
+                expense: vec![cell.clone()],
+                saved: vec![cell.clone()],
+                free_cash_flow: vec![cell.clone()],
+                total_expenses: vec![cell],
+            },
+            excluded: vec![ExcludedDto {
+                currency: "USD".into(),
+                count: 2,
+            }],
+        };
+        let v = serde_json::to_value(&dto).unwrap();
+        insta::assert_json_snapshot!(v["rows"], @r#"
+        [
+          {
+            "category": {
+              "depth": 0,
+              "id": "cat-1",
+              "isArchived": false,
+              "isGroup": true,
+              "kind": "expense",
+              "name": "Alimentación",
+              "parentId": null
+            },
+            "months": [
+              {
+                "actual": {
+                  "currency": "CLP",
+                  "display": "$120.000",
+                  "minor": "120000"
+                },
+                "diff": {
+                  "currency": "CLP",
+                  "display": "$30.000",
+                  "minor": "30000"
+                },
+                "planned": {
+                  "currency": "CLP",
+                  "display": "$150.000",
+                  "minor": "150000"
+                }
+              }
+            ],
+            "ownPlanned": [
+              {
+                "currency": "CLP",
+                "display": "$0",
+                "minor": "0"
+              }
+            ]
+          }
+        ]
+        "#);
+        let keys = |o: &serde_json::Value| -> Vec<String> {
+            o.as_object().unwrap().keys().cloned().collect()
+        };
+        assert_eq!(
+            keys(&v),
+            [
+                "baseCurrency",
+                "excluded",
+                "rows",
+                "summary",
+                "view",
+                "year"
+            ]
+        );
+        assert_eq!(
+            keys(&v["summary"]),
+            [
+                "expense",
+                "freeCashFlow",
+                "income",
+                "saved",
+                "totalExpenses"
+            ]
+        );
+        assert_eq!(v["excluded"], json!([{ "currency": "USD", "count": 2 }]));
+        assert_eq!(
+            (v["year"].clone(), v["view"].clone()),
+            (json!(2026), json!("combined"))
+        );
+    }
+
+    #[test]
+    fn calendar_wire_shape() {
+        let dto = CalendarDto {
+            month: "2026-02".into(),
+            view: View::Household,
+            base_currency: "CLP".into(),
+            days_in_month: 28,
+            rows: vec![CalendarRowDto {
+                category: category(),
+                days: vec![money("5000", "$5.000")],
+                total: money("5000", "$5.000"),
+            }],
+            day_totals: CalendarDayTotalsDto {
+                income: vec![money("0", "$0")],
+                expense: vec![money("5000", "$5.000")],
+            },
+            excluded: vec![],
+        };
+        let v = serde_json::to_value(&dto).unwrap();
+        let keys: Vec<&String> = v.as_object().unwrap().keys().collect();
+        assert_eq!(
+            keys,
+            [
+                "baseCurrency",
+                "dayTotals",
+                "daysInMonth",
+                "excluded",
+                "month",
+                "rows",
+                "view"
+            ]
+        );
+        assert_eq!(v["daysInMonth"], 28);
+        assert_eq!(v["rows"][0]["days"][0]["minor"], "5000");
+        assert_eq!(v["rows"][0]["total"]["display"], "$5.000");
+        assert_eq!(v["dayTotals"]["income"][0]["minor"], "0");
+        assert_eq!(v["dayTotals"]["expense"][0]["minor"], "5000");
+    }
+
+    #[test]
+    fn cash_flow_wire_shape() {
+        let dto = CashFlowDto {
+            view: View::Combined,
+            base_currency: "CLP".into(),
+            months: vec![CashFlowMonthDto {
+                month: "2026-11".into(),
+                income: money("2000000", "$2.000.000"),
+                expense: money("1500000", "$1.500.000"),
+                saved: money("300000", "$300.000"),
+                free_cash_flow: money("200000", "$200.000"),
+                savings_rate_bp: Some(1500),
+            }],
+            excluded: vec![],
+        };
+        insta::assert_json_snapshot!(serde_json::to_value(&dto).unwrap()["months"][0], @r#"
+        {
+          "expense": {
+            "currency": "CLP",
+            "display": "$1.500.000",
+            "minor": "1500000"
+          },
+          "freeCashFlow": {
+            "currency": "CLP",
+            "display": "$200.000",
+            "minor": "200000"
+          },
+          "income": {
+            "currency": "CLP",
+            "display": "$2.000.000",
+            "minor": "2000000"
+          },
+          "month": "2026-11",
+          "saved": {
+            "currency": "CLP",
+            "display": "$300.000",
+            "minor": "300000"
+          },
+          "savingsRateBp": 1500
+        }
+        "#);
+    }
+
+    #[test]
+    fn breakdown_wire_shape() {
+        let dto = BreakdownDto {
+            view: View::Personal,
+            base_currency: "CLP".into(),
+            rows: vec![BreakdownRowDto {
+                category: category(),
+                amount: money("0", "$0"),
+                share_bp: None,
+            }],
+            total: money("0", "$0"),
+            excluded: vec![ExcludedDto {
+                currency: "USD".into(),
+                count: 1,
+            }],
+        };
+        let v = serde_json::to_value(&dto).unwrap();
+        let keys: Vec<&String> = v.as_object().unwrap().keys().collect();
+        assert_eq!(keys, ["baseCurrency", "excluded", "rows", "total", "view"]);
+        assert_eq!(v["rows"][0]["shareBp"], serde_json::Value::Null);
+        assert_eq!(v["rows"][0]["category"]["isGroup"], true);
+        assert_eq!(v["total"]["minor"], "0");
     }
 
     #[test]
