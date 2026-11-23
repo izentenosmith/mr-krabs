@@ -11,6 +11,7 @@ use mrk_domain::{
 use mrk_money::Money;
 use mrk_store::{EntryFilter, EntryRow, PostingRow, ScopeFilter, Visibility};
 
+use crate::accounts::OPENING_BALANCE;
 use crate::api::{self, NewTxInput, Page, TxDetailDto, TxKind, TxQuery, TxRowDto, View};
 use crate::support::{
     Fields, check_id, command, domain_error, field_error, new_id, parse_amount, posting_row,
@@ -21,7 +22,6 @@ use crate::{ApiError, App, ErrorCode, MoneyDto};
 const DESCRIPTION_MAX: usize = 500;
 const MEMO_MAX: usize = 2_000;
 const REGULAR: &str = "regular";
-const OPENING_BALANCE: &str = "opening_balance";
 const LIMIT_DEFAULT: u32 = 100;
 const LIMIT_MAX: u32 = 500;
 /// Separates the date and the id in a page cursor.

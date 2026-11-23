@@ -29,7 +29,8 @@ const NUMBER_MASK_MAX: usize = 20;
 const NUMBER_MASK_DIGITS: usize = 4;
 /// Balances count every live leg, at any date (Q-household-accounts-2).
 const ALL_DATES: &str = "9999-12-31";
-const OPENING_BALANCE: &str = "opening_balance";
+/// `journal_entry.kind` of an account's opening-balance entry (DEC-4).
+pub(crate) const OPENING_BALANCE: &str = "opening_balance";
 
 /// An opening balance as the user set it.
 #[derive(Clone, Debug, PartialEq, Eq)]
