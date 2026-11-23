@@ -123,4 +123,89 @@ describe("TxDialog", () => {
     fireEvent.click(d.getByRole("radio", { name: "Ingreso" }));
     expect(d.getByLabelText("Categoría")).toHaveValue("c2");
   });
+
+  it("CURRENCY_MISMATCH whose field key has no copy also shows the code's own copy (X-13)", async () => {
+    const onSubmit = vi
+      .fn()
+      .mockRejectedValue(new ApiError("CURRENCY_MISMATCH", "dev", { "amount.amount": "errors.currencyMismatch" }));
+    const { d } = renderDialog({ onSubmit });
+    fireEvent.change(d.getByLabelText("Cuenta"), { target: { value: "a1" } });
+    fireEvent.change(d.getByLabelText("Categoría"), { target: { value: "c1" } });
+    fireEvent.change(d.getByLabelText("Monto"), { target: { value: "1" } });
+    fireEvent.click(d.getByRole("button", { name: "Guardar" }));
+    expect(await d.findByRole("alert")).toHaveTextContent("La moneda no coincide con la de la cuenta.");
+    expect(d.getByLabelText("Monto")).toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("editing a transaction whose category the picker can't show doesn't re-send it silently (X-13 F1)", async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const { d } = renderDialog({
+      mode: "edit",
+      onSubmit,
+      initial: {
+        id: "t1",
+        kind: "expense",
+        date: "2026-11-20",
+        description: "Feria",
+        memo: "",
+        accountId: "a1",
+        categoryId: "cx-archived",
+        toAccountId: null,
+        amount: { minor: "1", currency: "CLP", display: "$1" },
+        status: "pending",
+        deleted: false,
+      },
+    });
+    expect(d.getByLabelText("Categoría")).toHaveValue("");
+    fireEvent.click(d.getByRole("button", { name: "Guardar" }));
+    expect(await d.findByText("Este campo es obligatorio")).toBeInTheDocument();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("CURRENCY_MISMATCH with its own errors.field copy shows it once, under the field (X-13 F4)", async () => {
+    const onSubmit = vi
+      .fn()
+      .mockRejectedValue(new ApiError("CURRENCY_MISMATCH", "dev", { "amount.amount": "errors.field.currencyMismatch" }));
+    const { d } = renderDialog({ onSubmit });
+    fireEvent.change(d.getByLabelText("Cuenta"), { target: { value: "a1" } });
+    fireEvent.change(d.getByLabelText("Categoría"), { target: { value: "c1" } });
+    fireEvent.change(d.getByLabelText("Monto"), { target: { value: "1" } });
+    fireEvent.click(d.getByRole("button", { name: "Guardar" }));
+    expect(await d.findByText("No coincide con la moneda de la cuenta")).toBeInTheDocument();
+    expect(d.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  const editExpense = (categoryId: string) => ({
+    id: "t1",
+    kind: "expense" as const,
+    date: "2026-11-20",
+    description: "Feria",
+    memo: "",
+    accountId: "a1",
+    categoryId,
+    toAccountId: null,
+    amount: { minor: "1", currency: "CLP", display: "$1" },
+    status: "pending" as const,
+    deleted: false,
+  });
+
+  it("with the expense tree unavailable, an edit keeps its category as the current one and saves (X-13 F10)", async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const { d } = renderDialog({
+      mode: "edit",
+      onSubmit,
+      categories: { expense: undefined, income: [{ id: "c2", name: "Sueldo" }] },
+      initial: editExpense("c1"),
+    });
+    expect(d.getByLabelText("Categoría")).toHaveValue("c1");
+    expect(d.getByRole("option", { name: "Categoría actual" })).toBeInTheDocument();
+    fireEvent.click(d.getByRole("button", { name: "Guardar" }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ categoryId: "c1" })));
+  });
+
+  it("an edit whose category is no longer offered says so when the dialog opens (X-13 F11)", () => {
+    const { d } = renderDialog({ mode: "edit", initial: editExpense("cx-archived") });
+    expect(d.getByText("Está archivada; elige otra opción")).toBeInTheDocument();
+    expect(d.getByLabelText("Categoría")).toHaveAttribute("aria-invalid", "true");
+  });
 });

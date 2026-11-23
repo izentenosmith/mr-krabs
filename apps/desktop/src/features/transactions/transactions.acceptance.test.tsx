@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { ApiError } from "@mr-krabs/api-client";
 import type {
   AccountSummaryDto,
+  CategoryNodeDto,
   Page,
   TxDetailDto,
   TxKind,
@@ -18,7 +19,7 @@ import App from "@/App";
 import { Toaster } from "@/components/ui/sonner";
 import i18n from "@/i18n";
 
-import { TransactionsPage, type CategoryOptions } from "./TransactionsPage";
+import { TransactionsPage } from "./TransactionsPage";
 
 const api = vi.hoisted(() => ({
   app: {
@@ -43,6 +44,7 @@ const api = vi.hoisted(() => ({
     delete: vi.fn(),
     restore: vi.fn(),
   },
+  category: { tree: vi.fn() },
 }));
 
 vi.mock("@mr-krabs/api-client", async (importOriginal) => ({
@@ -78,12 +80,27 @@ const accounts = [
   summary("a3", "Dólares Prueba", "USD"),
 ];
 
-const categories: CategoryOptions = {
+function node(
+  id: string,
+  kind: CategoryNodeDto["kind"],
+  name: string,
+  children: CategoryNodeDto[] = [],
+  extra: Partial<CategoryNodeDto> = {},
+): CategoryNodeDto {
+  return { id, parentId: null, kind, name, icon: null, isArchived: false, sortOrder: 0, children, ...extra };
+}
+
+// The live trees `category_tree` returns per kind (synthetic).
+const trees: Record<CategoryNodeDto["kind"], CategoryNodeDto[]> = {
   expense: [
-    { id: "c1", name: "Supermercado" },
-    { id: "c2", name: "Transporte" },
+    node("g1", "expense", "Alimentación", [
+      node("c1", "expense", "Supermercado", [], { parentId: "g1", sortOrder: 1 }),
+      node("c3", "expense", "Restaurantes", [], { parentId: "g1", sortOrder: 0 }),
+      node("cx", "expense", "Archivada Prueba", [], { parentId: "g1", isArchived: true }),
+    ]),
+    node("c2", "expense", "Transporte", [], { sortOrder: 1 }),
   ],
-  income: [{ id: "c9", name: "Sueldo" }],
+  income: [node("c9", "income", "Sueldo")],
 };
 
 function row(id: string, kind: TxKind, extra: Partial<TxRowDto> = {}): TxRowDto {
@@ -159,7 +176,6 @@ function renderPage(props: { accountId?: string; onAccountIdChange?: (id?: strin
       <TransactionsPage
         accountId={props.accountId}
         onAccountIdChange={onAccountIdChange}
-        categories={categories}
       />
       <Toaster />
     </QueryClientProvider>,
@@ -168,7 +184,10 @@ function renderPage(props: { accountId?: string; onAccountIdChange?: (id?: strin
 }
 
 async function openNew() {
-  fireEvent.click(await screen.findByRole("button", { name: "Nuevo" }));
+  // "Nuevo" waits for the category trees (X-13 F2).
+  const button = await screen.findByRole("button", { name: "Nuevo" });
+  await waitFor(() => expect(button).toBeEnabled());
+  fireEvent.click(button);
   return within(await screen.findByRole("dialog", { name: "Nueva transacción" }));
 }
 
@@ -190,6 +209,9 @@ beforeEach(() => {
   api.tx.get.mockResolvedValue(expenseDetail);
   api.tx.delete.mockResolvedValue(null);
   api.tx.restore.mockResolvedValue(null);
+  api.category.tree.mockImplementation(async (q: { kind?: CategoryNodeDto["kind"] }) =>
+    q.kind ? trees[q.kind] : [...trees.expense, ...trees.income],
+  );
 });
 
 afterEach(async () => {
@@ -454,7 +476,8 @@ describe("S7 transactions — acceptance", () => {
     api.tx.list.mockResolvedValue(page([]));
     renderPage();
     expect(await screen.findByText("Aún no hay transacciones")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Nuevo" })).toBeEnabled();
+    // Nuevo also waits for the category trees (X-13 F2).
+    await waitFor(() => expect(screen.getByRole("button", { name: "Nuevo" })).toBeEnabled());
   });
 
   it("edge: missing required fields block tx_create with a message per field", async () => {
@@ -523,6 +546,32 @@ describe("S7 transactions — acceptance", () => {
     expect(d.getByRole("radio", { name: "Expense" })).toBeInTheDocument();
     expect(d.getByLabelText("Amount")).toBeInTheDocument();
     expect(d.getByRole("button", { name: "Save" })).toBeInTheDocument();
+  });
+
+  it("categories: the picker lists the selected type's live tree from category_tree (REQ-13)", async () => {
+    renderPage();
+    const d = await openNew();
+    const select = d.getByLabelText("Categoría");
+    const group = await within(select).findByRole("group", { name: "Alimentación" });
+    expect(within(group).getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "Restaurantes",
+      "Supermercado",
+    ]);
+    expect(within(select).getByRole("option", { name: "Transporte" })).toBeInTheDocument();
+    expect(within(select).queryByRole("option", { name: "Archivada Prueba" })).not.toBeInTheDocument();
+    expect(within(select).queryByRole("option", { name: "Sueldo" })).not.toBeInTheDocument();
+    expect(api.category.tree).toHaveBeenCalledWith({ kind: "expense" });
+
+    fireEvent.click(d.getByRole("radio", { name: "Ingreso" }));
+    expect(await within(d.getByLabelText("Categoría")).findByRole("option", { name: "Sueldo" })).toBeInTheDocument();
+    expect(api.category.tree).toHaveBeenCalledWith({ kind: "income" });
+    fireEvent.change(d.getByLabelText("Cuenta"), { target: { value: "a1" } });
+    fireEvent.change(d.getByLabelText("Categoría"), { target: { value: "c9" } });
+    fill(d, "Monto", "1.000");
+    fireEvent.click(d.getByRole("button", { name: "Guardar" }));
+    await waitFor(() =>
+      expect(api.tx.create).toHaveBeenCalledWith(expect.objectContaining({ type: "income", categoryId: "c9" })),
+    );
   });
 
   it("journey: record a transfer, see it listed, delete it and undo", async () => {

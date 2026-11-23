@@ -36,6 +36,41 @@ describe("applyServerErrors", () => {
   });
 });
 
+describe("applyServerErrors for codes other than VALIDATION (X-13)", () => {
+  it("a code whose field can't show its own copy also sets its form-level copy", () => {
+    const setError = vi.fn();
+    applyServerErrors(
+      new ApiError("CURRENCY_MISMATCH", "x", { "openingBalance.amount": "errors.currencyMismatch" }),
+      setError,
+      { "openingBalance.amount": "openingAmount" },
+    );
+    expect(setError.mock.calls).toEqual([
+      ["openingAmount", { type: "server", message: "errors.currencyMismatch" }],
+      ["root.server", { type: "CURRENCY_MISMATCH" }],
+    ]);
+  });
+
+  it("a code whose fields all carry their own errors.field copy stays field-level (no false or doubled alert)", () => {
+    const setError = vi.fn();
+    applyServerErrors(
+      new ApiError("CURRENCY_MISMATCH", "x", { currency: "errors.field.lockedByPostings" }),
+      setError,
+      { currency: "currency" },
+    );
+    expect(setError.mock.calls).toEqual([
+      ["currency", { type: "server", message: "errors.field.lockedByPostings" }],
+    ]);
+  });
+
+  it("VALIDATION with every field mapped stays field-level only", () => {
+    const setError = vi.fn();
+    applyServerErrors(new ApiError("VALIDATION", "x", { name: "errors.field.required" }), setError, {
+      name: "name",
+    });
+    expect(setError).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("errorCopyKey", () => {
   it("maps a known code to its copy and an unknown one to the generic copy", () => {
     expect(errorCopyKey("CURRENCY_MISMATCH")).toBe("errors.code.CURRENCY_MISMATCH");
@@ -61,5 +96,38 @@ describe("fieldMessage", () => {
     expect(fieldMessage(t, "tx.title")).toBe("Revisa este campo");
     expect(fieldMessage(t, "errors")).toBe("Revisa este campo");
     expect(fieldMessage(t, undefined)).toBeUndefined();
+  });
+});
+
+describe("errors.field copy (X-13)", () => {
+  // Every `errors.field.<reason>` the core sends: #29's table (with `invalidDate`) and S5's tx_* reasons.
+  const reasons = [
+    "required",
+    "tooLong",
+    "unsupportedCurrency",
+    "invalidAmount",
+    "invalidDate",
+    "currencyMismatch",
+    "notAllowed",
+    "fullNumber",
+    "lockedByPostings",
+    // The transactions commands (S5, `feat/transactions`); `notFound` was announced for them
+    // but no command sends it yet — its copy is ready for when one does.
+    "sameAccount",
+    "wrongKind",
+    "archived",
+    "notFound",
+    "outOfRange",
+    "invalid",
+  ];
+
+  it.each(["es-CL", "en"])("has its own copy for every reason in %s", (lng) => {
+    const t = i18n.getFixedT(lng);
+    const generic = t("errors.field.unknown");
+    for (const reason of reasons) {
+      const key = `errors.field.${reason}`;
+      expect(i18n.getResource(lng, "translation", key), key).toEqual(expect.any(String));
+      expect(fieldMessage(t, key), key).not.toBe(generic);
+    }
   });
 });

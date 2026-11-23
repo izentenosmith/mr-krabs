@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -64,12 +64,29 @@ type FormValues = z.infer<typeof schema>;
 export interface CategoryOption {
   id: string;
   name: string;
+  /** The root it belongs to, shown as an `<optgroup>`; none for a childless root. */
+  group?: string;
+  /** That root's id: options group by it, so two roots with one name stay apart. */
+  groupId?: string;
 }
 
-/** Category choices per transaction type, until `category_tree` lands (DEC-13). */
+/** Category choices per transaction type, from `category_tree` (REQ-13). */
 export interface CategoryOptions {
-  expense: CategoryOption[];
-  income: CategoryOption[];
+  /** `undefined` while that kind's tree is unavailable (failed or not loaded). */
+  expense: CategoryOption[] | undefined;
+  income: CategoryOption[] | undefined;
+}
+
+const listFor = (categories: CategoryOptions, kind: string) =>
+  kind === "income" ? categories.income : kind === "transfer" ? [] : categories.expense;
+
+/**
+ * Whether an edited transaction's stored category can stay: it is in its kind's list, or
+ * that list is unavailable (so nothing can be checked and the edit must still save, F10).
+ */
+function keepsCategory(categories: CategoryOptions, initial: TxDetailDto) {
+  const list = listFor(categories, initial.kind);
+  return list === undefined || list.some((c) => c.id === initial.categoryId);
 }
 
 export interface TxDialogProps {
@@ -91,7 +108,7 @@ function today() {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-function defaults(initial?: TxDetailDto): FormValues {
+function defaults(categories: CategoryOptions, initial?: TxDetailDto): FormValues {
   if (!initial || initial.kind === "opening_balance") {
     return {
       type: "expense",
@@ -107,7 +124,9 @@ function defaults(initial?: TxDetailDto): FormValues {
   return {
     type: initial.kind,
     accountId: initial.accountId,
-    categoryId: initial.categoryId ?? "",
+    // Only a category the picker can show (an archived or missing one would be re-sent
+    // invisibly); otherwise the user picks again (X-13 F1).
+    categoryId: keepsCategory(categories, initial) ? (initial.categoryId ?? "") : "",
     toAccountId: initial.toAccountId ?? "",
     // The detail amount is positive and in Rust's es-CL text, which Rust parses back
     // (never the row's signed amount, X-7).
@@ -134,6 +153,32 @@ function toInput(v: FormValues, accounts: AccountDto[]): NewTxInput {
   return { type: v.type, accountId: v.accountId, categoryId: v.categoryId, amount, ...text };
 }
 
+/** Options in order, consecutive ones of the same root inside one `<optgroup>`. */
+function CategoryOptionList({ options }: { options: CategoryOption[] }) {
+  const runs: Array<{ group?: string; key: string; items: CategoryOption[] }> = [];
+  for (const o of options) {
+    const last = runs.at(-1);
+    const key = o.groupId ?? o.group ?? "";
+    if (last && o.group && last.key === key) last.items.push(o);
+    else runs.push({ group: o.group, key, items: [o] });
+  }
+  const opts = (items: CategoryOption[]) =>
+    items.map((c) => (
+      <option key={c.id} value={c.id}>
+        {c.name}
+      </option>
+    ));
+  return runs.map((run, i) =>
+    run.group ? (
+      <optgroup key={`${run.key}-${i}`} label={run.group}>
+        {opts(run.items)}
+      </optgroup>
+    ) : (
+      opts(run.items)
+    ),
+  );
+}
+
 /** `<option>`s for the household's accounts. */
 export function AccountOptions({ accounts }: { accounts: AccountDto[] }) {
   return accounts.map((a) => (
@@ -157,15 +202,25 @@ export function TxDialog({
   const { t } = useTranslation();
   const { register, handleSubmit, watch, setError, setValue, getValues, formState } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: defaults(initial),
+    defaultValues: defaults(categories, initial),
   });
   // Messages are i18n keys (ours or the server's); `Field` wires id and aria (MASTER §7.1).
   const err = (field: TxField) => fieldMessage(t, formState.errors[field]?.message);
   const type = watch("type");
   const accountId = watch("accountId");
   const currency = accounts.find((a) => a.id === accountId)?.currency;
-  const optionsFor = (kind: FormValues["type"]) => (kind === "income" ? categories.income : categories.expense);
+  const optionsFor = (kind: FormValues["type"]) => listFor(categories, kind);
   const categoryOptions = optionsFor(type);
+  const categoryId = watch("categoryId");
+  // A stored category dropped because its list no longer offers it is explained at once
+  // (X-13 F11); `errors.field.archived` covers archived and removed categories.
+  // Decided once, when the dialog opens: later edits are the user's.
+  const [categoryDropped] = useState(
+    () => !!initial?.categoryId && !keepsCategory(categories, initial),
+  );
+  useEffect(() => {
+    if (categoryDropped) setError("categoryId", { type: "server", message: "errors.field.archived" });
+  }, [categoryDropped, setError]);
   // A category belongs to one type's list: switching types drops one the new list doesn't
   // have, so what is sent is always what the select shows (F15).
   const typeField = register("type", {
@@ -173,7 +228,7 @@ export function TxDialog({
       const next = e.target.value as FormValues["type"];
       // A transfer has no category; keep the value so switching back restores it (F41).
       if (next === "transfer") return;
-      if (!optionsFor(next).some((c) => c.id === getValues("categoryId"))) setValue("categoryId", "");
+      if (!optionsFor(next)?.some((c) => c.id === getValues("categoryId"))) setValue("categoryId", "");
     },
   });
   const [deleting, setDeleting] = useState(false);
@@ -234,11 +289,12 @@ export function TxDialog({
             <Field key="category" label={t("tx.form.category")} error={err("categoryId")}>
               <select {...register("categoryId")} className={controlClass}>
                 <option value="">{t("tx.form.choose")}</option>
-                {categoryOptions.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
+                {categoryOptions === undefined && categoryId ? (
+                  // The list is unavailable: keep showing what will be sent (F10).
+                  <option value={categoryId}>{t("tx.form.currentCategory")}</option>
+                ) : (
+                  <CategoryOptionList options={categoryOptions ?? []} />
+                )}
               </select>
             </Field>
           )}

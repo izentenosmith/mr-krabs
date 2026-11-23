@@ -8,6 +8,7 @@ import {
   ApiError,
   type NewTxInput,
   type TxDetailDto,
+  type CategoryKind,
   type TxRowDto,
   type View,
 } from "@mr-krabs/api-client";
@@ -19,15 +20,13 @@ import { accountsKey } from "@/features/accounts/AccountsSidebarContainer";
 import { errorCopyKey, isNotImplemented } from "@/lib/api-errors";
 
 import { StateBlock } from "./StateBlock";
+import { categoryOptions } from "./categoryOptions";
 import { TransactionsTable } from "./TransactionsTable";
 import { AccountOptions, TxDialog, type CategoryOptions } from "./TxDialog";
-
-export type { CategoryOption, CategoryOptions } from "./TxDialog";
 
 export interface TransactionsPageProps {
   accountId?: string;
   onAccountIdChange: (accountId: string | undefined) => void;
-  categories: CategoryOptions;
 }
 
 const PAGE_SIZE = 100; // design Q8
@@ -35,6 +34,12 @@ const NO_ROWS: TxRowDto[] = [];
 // M1 has one member, so the combined view is everything (Q1); the lens switcher (M3) sets it.
 const VIEW: View = "combined";
 const UNDO_MS = 8000; // MASTER §7.2 undo toast
+
+/** One kind's live category tree for the picker (REQ-13). */
+const treeQuery = (kind: CategoryKind) => ({
+  queryKey: ["categories", "tree", kind] as const,
+  queryFn: () => api.category.tree({ kind }),
+});
 
 /** A failed load: the code's copy (MASTER §7.1) and a retry. */
 function LoadError({ error, onRetry }: { error: unknown; onRetry: () => void }) {
@@ -54,11 +59,7 @@ function LoadError({ error, onRetry }: { error: unknown; onRetry: () => void }) 
 /** The open dialog; `key` identifies one opening so late answers can't touch a newer one. */
 type OpenDialog = ({ mode: "create" } | { mode: "edit"; detail: TxDetailDto }) & { key: number };
 
-export function TransactionsPage({
-  accountId,
-  onAccountIdChange,
-  categories,
-}: TransactionsPageProps) {
+export function TransactionsPage({ accountId, onAccountIdChange }: TransactionsPageProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [dialog, setDialog] = useState<OpenDialog | null>(null);
@@ -71,6 +72,19 @@ export function TransactionsPage({
     queryFn: () => api.account.list({ view: VIEW, includeArchived: false }),
   });
   const accountOptions = accounts.data?.map((s) => s.account) ?? [];
+  // The category picker's live trees, one per kind (REQ-13).
+  const expenseTree = useQuery(treeQuery("expense"));
+  const incomeTree = useQuery(treeQuery("income"));
+  // A dialog opens only once the trees have answered, so its category defaults and the
+  // type-switch rule see the real lists (X-13 F2).
+  const treesSettled = !expenseTree.isPending && !incomeTree.isPending;
+  const categories = useMemo<CategoryOptions>(
+    () => ({
+      expense: expenseTree.data ? categoryOptions(expenseTree.data) : undefined,
+      income: incomeTree.data ? categoryOptions(incomeTree.data) : undefined,
+    }),
+    [expenseTree.data, incomeTree.data],
+  );
   const list = useInfiniteQuery({
     queryKey: ["tx", "list", { accountId }],
     queryFn: ({ pageParam }) =>
@@ -80,6 +94,10 @@ export function TransactionsPage({
   });
   // Stable across renders that don't change the pages, so the table keeps its row model (F31).
   const rows = useMemo(() => list.data?.pages.flatMap((p) => p.items) ?? NO_ROWS, [list.data]);
+  // What the toolbar and dialog need besides the list; a failure (not NOT_IMPLEMENTED,
+  // which isn't an error) shows one alert instead of silently empty selects.
+  const support = [accounts, expenseTree, incomeTree];
+  const supportFailure = support.find((q) => q.isError && !isNotImplemented(q.error));
   // Q12: the core answers NOT_IMPLEMENTED until the transactions slice lands.
   const notAvailable = list.isError && isNotImplemented(list.error);
 
@@ -98,10 +116,15 @@ export function TransactionsPage({
   const open = async (row: TxRowDto) => {
     const key = ++lastOpen.current;
     try {
-      const detail = await queryClient.fetchQuery({
-        queryKey: ["tx", "detail", row.id],
-        queryFn: () => api.tx.get(row.id),
-      });
+      const [detail] = await Promise.all([
+        queryClient.fetchQuery({
+          queryKey: ["tx", "detail", row.id],
+          queryFn: () => api.tx.get(row.id),
+        }),
+        // A failed tree still lets the dialog open; the page alert says what failed.
+        queryClient.ensureQueryData(treeQuery("expense")).catch(() => undefined),
+        queryClient.ensureQueryData(treeQuery("income")).catch(() => undefined),
+      ]);
       if (key === lastOpen.current) setDialog({ mode: "edit", detail, key });
     } catch (raw) {
       if (key === lastOpen.current) toastError(raw); // an abandoned opening stays silent (F44)
@@ -162,17 +185,17 @@ export function TransactionsPage({
           <option value="">{t("tx.allAccounts")}</option>
           <AccountOptions accounts={accountOptions} />
         </select>
-        <Button onClick={openCreate} disabled={notAvailable}>
+        <Button onClick={openCreate} disabled={notAvailable || !treesSettled}>
           <Plus aria-hidden />
           {t("tx.new")}
         </Button>
       </header>
-      {accounts.isError && !notAvailable && (
-        // One alert for both loads; its retry also retries a failed list (F43).
+      {supportFailure && !notAvailable && (
+        // One alert for every failed load; its retry retries them all (F43).
         <LoadError
-          error={accounts.error}
+          error={supportFailure.error}
           onRetry={() => {
-            void accounts.refetch();
+            for (const q of support) if (q.isError) void q.refetch();
             if (list.isError) void list.refetch();
           }}
         />
@@ -184,7 +207,7 @@ export function TransactionsPage({
           {t("shell.loading")}
         </p>
       ) : list.isError && !list.data ? (
-        accounts.isError ? null : (
+        supportFailure ? null : (
           <LoadError error={list.error} onRetry={() => void list.refetch()} />
         )
       ) : rows.length === 0 ? (

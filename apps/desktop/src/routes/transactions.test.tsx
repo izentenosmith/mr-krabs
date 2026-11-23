@@ -10,6 +10,7 @@ const api = vi.hoisted(() => ({
   money: { parse: vi.fn() },
   account: { list: vi.fn() },
   tx: { list: vi.fn() },
+  category: { tree: vi.fn().mockResolvedValue([]) },
 }));
 
 vi.mock("@mr-krabs/api-client", async (importOriginal) => ({

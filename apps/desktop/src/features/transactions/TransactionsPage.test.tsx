@@ -13,12 +13,19 @@ import { TransactionsPage } from "./TransactionsPage";
 const api = vi.hoisted(() => ({
   account: { list: vi.fn() },
   tx: { list: vi.fn(), get: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
+  category: { tree: vi.fn() },
 }));
 
 vi.mock("@mr-krabs/api-client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@mr-krabs/api-client")>()),
   api,
 }));
+
+async function clickNuevo() {
+  const button = await screen.findByRole("button", { name: "Nuevo" });
+  await waitFor(() => expect(button).toBeEnabled());
+  fireEvent.click(button);
+}
 
 function deferred<T>() {
   let resolve!: (v: T) => void;
@@ -81,7 +88,7 @@ function renderPage() {
   lastClient = client;
   render(
     <QueryClientProvider client={client}>
-      <TransactionsPage onAccountIdChange={vi.fn()} categories={{ expense: [], income: [] }} />
+      <TransactionsPage onAccountIdChange={vi.fn()} />
       <Toaster />
     </QueryClientProvider>,
   );
@@ -90,6 +97,7 @@ function renderPage() {
 beforeEach(() => {
   vi.clearAllMocks();
   api.account.list.mockResolvedValue([]);
+  api.category.tree.mockResolvedValue([]);
 });
 afterEach(() => toast.dismiss());
 
@@ -144,7 +152,7 @@ describe("TransactionsPage dialog identity", () => {
     api.tx.create.mockResolvedValue(detail("t9", "x"));
     renderPage();
     fireEvent.click(await screen.findByRole("row", { name: /Feria Prueba/ }));
-    fireEvent.click(screen.getByRole("button", { name: "Nuevo" }));
+    await clickNuevo();
     const d = within(await screen.findByRole("dialog", { name: "Nueva transacción" }));
     fireEvent.change(d.getByLabelText("Monto"), { target: { value: "777" } });
     slow.resolve(detail("t1", "Feria Prueba"));
@@ -176,7 +184,7 @@ describe("TransactionsPage dialog identity", () => {
     const slow = deferred<ReturnType<typeof detail>>();
     api.tx.create.mockReturnValue(slow.promise);
     renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: "Nuevo" }));
+    await clickNuevo();
     let d = within(await screen.findByRole("dialog", { name: "Nueva transacción" }));
     fireEvent.click(d.getByRole("radio", { name: "Transferencia" }));
     fireEvent.change(d.getByLabelText("Desde"), { target: { value: "a1" } });
@@ -186,7 +194,7 @@ describe("TransactionsPage dialog identity", () => {
     await waitFor(() => expect(api.tx.create).toHaveBeenCalled());
     fireEvent.click(d.getByRole("button", { name: "Cancelar" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: "Nuevo" }));
+    await clickNuevo();
     d = within(await screen.findByRole("dialog", { name: "Nueva transacción" }));
     fireEvent.change(d.getByLabelText("Monto"), { target: { value: "8" } });
     slow.resolve(detail("t9", "x"));
@@ -211,7 +219,7 @@ describe("TransactionsPage writes", () => {
     // The sidebar's archived view (S6) shares the ["accounts"] prefix.
     const archivedKey = ["accounts", "list", { includeArchived: true }];
     lastClient.setQueryData(archivedKey, []);
-    fireEvent.click(screen.getByRole("button", { name: "Nuevo" }));
+    await clickNuevo();
     const d = within(await screen.findByRole("dialog", { name: "Nueva transacción" }));
     fireEvent.click(d.getByRole("radio", { name: "Transferencia" }));
     fireEvent.change(d.getByLabelText("Desde"), { target: { value: "a1" } });
@@ -271,7 +279,7 @@ describe("TransactionsPage filter", () => {
         <TransactionsPage
           accountId={accountId}
           onAccountIdChange={vi.fn()}
-          categories={{ expense: [], income: [] }}
+         
         />
       </QueryClientProvider>
     );
@@ -344,10 +352,49 @@ describe("TransactionsPage with the app's retry policy", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: shouldRetry } } });
     render(
       <QueryClientProvider client={client}>
-        <TransactionsPage onAccountIdChange={vi.fn()} categories={{ expense: [], income: [] }} />
+        <TransactionsPage onAccountIdChange={vi.fn()} />
       </QueryClientProvider>,
     );
     expect(await screen.findByText("Aún no disponible", {}, { timeout: 500 })).toBeInTheDocument();
     expect(api.tx.list).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("TransactionsPage categories", () => {
+  it("a failing category_tree shows its code's copy with a retry instead of an empty picker", async () => {
+    api.tx.list.mockResolvedValue({ items: [row], nextCursor: null });
+    api.category.tree.mockRejectedValueOnce(new ApiError("INTERNAL", "dev"));
+    renderPage();
+    expect(await screen.findByRole("alert")).toHaveTextContent("Algo salió mal. Intenta de nuevo.");
+    fireEvent.click(screen.getByRole("button", { name: "Reintentar" }));
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+    expect(api.category.tree).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe("TransactionsPage waits for the category trees", () => {
+  it("opens the dialog only once the trees have answered (X-13 F2)", async () => {
+    api.tx.list.mockResolvedValue({ items: [row], nextCursor: null });
+    const slow = deferred<unknown[]>();
+    api.category.tree.mockReturnValue(slow.promise);
+    renderPage();
+    await screen.findByRole("row", { name: /Feria Prueba/ });
+    expect(screen.getByRole("button", { name: "Nuevo" })).toBeDisabled();
+    slow.resolve([]);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Nuevo" })).toBeEnabled());
+  });
+
+  it("a row opened while the trees load waits for them before showing the dialog (X-13 F2)", async () => {
+    api.account.list.mockResolvedValue(accounts);
+    api.tx.list.mockResolvedValue({ items: [row], nextCursor: null });
+    api.tx.get.mockResolvedValue(detail("t1", "Feria Prueba"));
+    const slow = deferred<unknown[]>();
+    api.category.tree.mockReturnValue(slow.promise);
+    renderPage();
+    fireEvent.click(await screen.findByRole("row", { name: /Feria Prueba/ }));
+    await new Promise((r) => setTimeout(r, 30));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    slow.resolve([]);
+    expect(await screen.findByRole("dialog", { name: "Editar transacción" })).toBeInTheDocument();
   });
 });
