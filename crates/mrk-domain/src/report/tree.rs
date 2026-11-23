@@ -43,7 +43,8 @@ impl CategoryTree {
         for c in by_id.values() {
             children.entry(c.parent_id.as_deref()).or_default().push(c);
         }
-        let key = |c: &&ReportCategory| (c.kind, c.sort_order, normalize_name(&c.name), c.id.clone());
+        let key =
+            |c: &&ReportCategory| (c.kind, c.sort_order, normalize_name(&c.name), c.id.clone());
         for list in children.values_mut() {
             list.sort_by_cached_key(key);
         }
@@ -106,7 +107,11 @@ impl CategoryTree {
         // Rows are in pre-order, so walking them backwards finishes every subtree before its
         // parent is reached.
         for i in (0..self.rows.len()).rev() {
-            if let Some(p) = self.rows[i].parent_id.as_deref().and_then(|p| self.index.get(p)) {
+            if let Some(p) = self.rows[i]
+                .parent_id
+                .as_deref()
+                .and_then(|p| self.index.get(p))
+            {
                 totals[*p] = totals[*p].checked_add(totals[i])?;
             }
         }

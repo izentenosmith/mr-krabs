@@ -186,6 +186,14 @@ impl Cell {
     }
 }
 
+/// The `excluded` list of a report: counts per currency, in currency-code order.
+pub(crate) fn excluded_list(counts: BTreeMap<CurrencyCode, u32>) -> Vec<Excluded> {
+    counts
+        .into_iter()
+        .map(|(currency, count)| Excluded { currency, count })
+        .collect()
+}
+
 /// Adds `amount` to `map[key]` (absent = zero), refusing overflow and mixed currencies.
 pub(crate) fn add_to(
     map: &mut BTreeMap<String, Money>,
@@ -211,7 +219,9 @@ pub(crate) fn sum_roots(
     tree.rows()
         .iter()
         .filter(|r| r.depth == 0 && r.kind == kind)
-        .try_fold(Money::zero(base), |sum, r| Ok(sum.checked_add(rolled[&r.id])?))
+        .try_fold(Money::zero(base), |sum, r| {
+            Ok(sum.checked_add(rolled[&r.id])?)
+        })
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

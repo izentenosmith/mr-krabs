@@ -8,7 +8,7 @@ use super::flows::flows;
 use super::period::{DateRange, Month, year_months};
 use super::{
     BudgetMatrix, CategoryTree, Cell, MatrixMonth, MatrixRow, ReportData, ReportError, Viewer,
-    add_to, sum_roots,
+    add_to, excluded_list, sum_roots,
 };
 use crate::category::CategoryKind;
 
@@ -36,13 +36,24 @@ pub fn budget_matrix(
         let i = month_index(f.month);
         saved[i] = saved[i].checked_add(f.amount)?;
     }
+    let mut excluded = flows.left_out_entries(|_| true);
     let mut planned_own = vec![BTreeMap::new(); 12];
     for line in data.budget_lines.iter().filter(|l| viewer.sees(&l.scope)) {
         let Ok(m) = Month::parse(&line.period) else {
             continue;
         };
-        if months.contains(&m) && line.amount.currency == base {
-            add_to(&mut planned_own[month_index(m)], &line.category_id, line.amount)?;
+        if !months.contains(&m) || tree.get(&line.category_id).is_none() {
+            continue;
+        }
+        if line.amount.currency == base {
+            add_to(
+                &mut planned_own[month_index(m)],
+                &line.category_id,
+                line.amount,
+            )?;
+        } else {
+            let n = excluded.entry(line.amount.currency).or_default();
+            *n = n.saturating_add(1);
         }
     }
     let rolled = |own: &[BTreeMap<String, Money>]| {
@@ -95,7 +106,7 @@ pub fn budget_matrix(
         year,
         rows,
         months: summary,
-        excluded: Vec::new(),
+        excluded: excluded_list(excluded),
     })
 }
 

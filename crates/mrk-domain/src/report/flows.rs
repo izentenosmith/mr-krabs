@@ -1,9 +1,9 @@
 //! From posting rows to what reports add up (DEC-29 Q7/Q8): category actuals and saved
 //! amounts in the base currency, for one viewer and one date range.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
-use mrk_money::Money;
+use mrk_money::{CurrencyCode, Money};
 
 use super::period::{DateRange, Month, day_of};
 use super::{CategoryTree, ReportAccount, ReportData, ReportError, ReportPosting, Viewer};
@@ -29,10 +29,43 @@ pub(crate) struct SavedFlow {
     pub amount: Money,
 }
 
+/// What a left-out leg would have added to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Counts {
+    Category(CategoryKind),
+    Saved,
+}
+
+/// A leg that would count but is not in the base currency (DEC-29 Q8).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct LeftOut<'a> {
+    pub entry_id: &'a str,
+    pub currency: CurrencyCode,
+    pub counts: Counts,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Flows<'a> {
     pub categories: Vec<CategoryFlow<'a>>,
     pub saved: Vec<SavedFlow>,
+    pub left_out: Vec<LeftOut<'a>>,
+}
+
+impl Flows<'_> {
+    /// Entries left out per currency, among the legs `relevant` keeps; each entry once.
+    pub fn left_out_entries(
+        &self,
+        relevant: impl Fn(Counts) -> bool,
+    ) -> BTreeMap<CurrencyCode, u32> {
+        let mut entries: BTreeMap<CurrencyCode, BTreeSet<&str>> = BTreeMap::new();
+        for l in self.left_out.iter().filter(|l| relevant(l.counts)) {
+            entries.entry(l.currency).or_default().insert(l.entry_id);
+        }
+        entries
+            .into_iter()
+            .map(|(c, ids)| (c, u32::try_from(ids.len()).unwrap_or(u32::MAX)))
+            .collect()
+    }
 }
 
 /// Reads the postings of `data` that fall in `range` and in the viewer's view.
@@ -76,10 +109,19 @@ pub(crate) fn flows<'a>(
                 let saving = accounts
                     .get(id.as_str())
                     .is_some_and(|a| a.kind.is_saving() && viewer.sees(&a.scope));
-                if saving && p.amount.currency == data.base {
+                if !saving {
+                    continue;
+                }
+                if p.amount.currency == data.base {
                     out.saved.push(SavedFlow {
                         month: Month::of_date(&p.entry_date),
                         amount: p.amount,
+                    });
+                } else {
+                    out.left_out.push(LeftOut {
+                        entry_id: &p.entry_id,
+                        currency: p.amount.currency,
+                        counts: Counts::Saved,
                     });
                 }
             }
@@ -89,6 +131,11 @@ pub(crate) fn flows<'a>(
             let Leg::Category(id) = &p.leg else { continue };
             let Some(row) = tree.get(id) else { continue };
             if p.amount.currency != data.base {
+                out.left_out.push(LeftOut {
+                    entry_id: &p.entry_id,
+                    currency: p.amount.currency,
+                    counts: Counts::Category(row.kind),
+                });
                 continue;
             }
             let actual = match row.kind {
