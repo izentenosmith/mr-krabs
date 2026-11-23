@@ -2,13 +2,19 @@
 //! `SELECT … WHERE` queries. Money is never aggregated in SQL (ADR-0003); every total here is
 //! computed in the household's base currency with checked arithmetic.
 
+use std::collections::BTreeMap;
+
 use mrk_money::{CurrencyCode, Money, MoneyError};
 
 use crate::category::CategoryKind;
 use crate::ledger::Leg;
 
+mod flows;
+mod matrix;
+mod period;
 mod tree;
 
+pub use matrix::budget_matrix;
 pub use tree::{CategoryTree, TreeRow};
 
 /// An account's kind, as stored in `account.kind`.
@@ -58,6 +64,18 @@ pub enum View {
 pub struct Viewer {
     pub view: View,
     pub me: String,
+}
+
+impl Viewer {
+    /// The view filter (DEC-30 Q9): household sees household accounts and lines, personal sees
+    /// the personal ones I own, combined sees all. M3 extends this with shared-entry shares.
+    pub fn sees(&self, scope: &Scope) -> bool {
+        match (self.view, scope) {
+            (View::Combined, _) | (View::Household, Scope::Household) => true,
+            (View::Personal, Scope::Personal { owner }) => *owner == self.me,
+            _ => false,
+        }
+    }
 }
 
 /// A live category row.
@@ -142,6 +160,60 @@ pub struct Cell {
     pub diff: Money,
 }
 
+impl Cell {
+    pub(crate) fn new(planned: Money, actual: Money) -> Result<Self, ReportError> {
+        Ok(Self {
+            planned,
+            actual,
+            diff: planned.checked_sub(actual)?,
+        })
+    }
+
+    pub(crate) fn zero(base: CurrencyCode) -> Self {
+        let zero = Money::zero(base);
+        Self {
+            planned: zero,
+            actual: zero,
+            diff: zero,
+        }
+    }
+
+    pub(crate) fn checked_add(&self, other: &Cell) -> Result<Self, ReportError> {
+        Self::new(
+            self.planned.checked_add(other.planned)?,
+            self.actual.checked_add(other.actual)?,
+        )
+    }
+}
+
+/// Adds `amount` to `map[key]` (absent = zero), refusing overflow and mixed currencies.
+pub(crate) fn add_to(
+    map: &mut BTreeMap<String, Money>,
+    key: &str,
+    amount: Money,
+) -> Result<(), ReportError> {
+    match map.get_mut(key) {
+        Some(sum) => *sum = sum.checked_add(amount)?,
+        None => {
+            map.insert(key.to_owned(), amount);
+        }
+    }
+    Ok(())
+}
+
+/// The total of a kind's root rows in a rolled-up map: everything of that kind in the tree.
+pub(crate) fn sum_roots(
+    tree: &CategoryTree,
+    rolled: &BTreeMap<String, Money>,
+    kind: CategoryKind,
+    base: CurrencyCode,
+) -> Result<Money, ReportError> {
+    tree.rows()
+        .iter()
+        .filter(|r| r.depth == 0 && r.kind == kind)
+        .try_fold(Money::zero(base), |sum, r| Ok(sum.checked_add(rolled[&r.id])?))
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MatrixRow {
     pub category: TreeRow,
@@ -166,14 +238,6 @@ pub struct BudgetMatrix {
     pub rows: Vec<MatrixRow>,
     pub months: Vec<MatrixMonth>,
     pub excluded: Vec<Excluded>,
-}
-
-pub fn budget_matrix(
-    _data: &ReportData,
-    _viewer: &Viewer,
-    _year: i32,
-) -> Result<BudgetMatrix, ReportError> {
-    unimplemented!("R0: budget_matrix")
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
