@@ -13,6 +13,9 @@ use mr_krabs_core::{ApiError, App, ErrorCode};
 use mrk_store::Store;
 use serde_json::{Value, json};
 
+/// A posting as stored: `(leg, account_id, category_id, amount_minor, status)`.
+type Leg = (String, Option<String>, Option<String>, i64, Option<String>);
+
 struct Env {
     dir: PathBuf,
     path: PathBuf,
@@ -175,10 +178,7 @@ impl Env {
         ))
     }
     /// `(leg, account_id, category_id, amount_minor, status)` of every posting, by id.
-    fn legs(
-        &self,
-        entry: &str,
-    ) -> Vec<(String, Option<String>, Option<String>, i64, Option<String>)> {
+    fn legs(&self, entry: &str) -> Vec<Leg> {
         let raw = self.raw();
         let mut st = raw
             .connection()

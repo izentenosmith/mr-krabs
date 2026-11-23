@@ -246,19 +246,6 @@ mod tests {
     }
 
     #[test]
-    fn transaction_commands_with_valid_args_are_not_implemented_yet() {
-        let mut app = app();
-        for (name, args) in m1_stub_calls()
-            .into_iter()
-            .filter(|(n, _)| n.starts_with("tx_"))
-        {
-            let e = dispatch(&mut app, name, args).unwrap_err();
-            assert_eq!(e.code, ErrorCode::NotImplemented, "{name}: {e}");
-            assert!(e.message.contains(name), "{name}: {}", e.message);
-        }
-    }
-
-    #[test]
     fn m1_commands_with_malformed_args_are_validation_errors() {
         let mut app = app();
         for (name, _) in m1_stub_calls() {

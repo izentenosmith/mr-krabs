@@ -936,7 +936,7 @@ fn c22_abuse_overflowing_amount_is_validation_not_a_panic() {
 }
 
 #[test]
-fn c23_catalogue_only_tx_commands_are_still_not_implemented_and_malformed_args_are_validation() {
+fn c23_catalogue_tx_commands_are_implemented_and_malformed_args_are_validation() {
     let mut env = Env::new("c23");
     env.onboard();
     let account = env.create_account(checking(None))["id"].clone();
@@ -971,10 +971,11 @@ fn c23_catalogue_only_tx_commands_are_still_not_implemented_and_malformed_args_a
         ("tx_restore", json!({ "id": uuid() })),
     ];
     for (name, args) in tx {
-        assert_eq!(
-            env.err(name, args).code,
-            ErrorCode::NotImplemented,
-            "{name}"
+        // S5 implemented them: none is a stub any more.
+        let r = env.call(name, args);
+        assert!(
+            !matches!(&r, Err(e) if e.code == ErrorCode::NotImplemented),
+            "{name}: {r:?}"
         );
     }
     for name in COMMANDS {

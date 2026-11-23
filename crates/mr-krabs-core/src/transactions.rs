@@ -651,3 +651,75 @@ fn entry_status(legs: &[StoredLeg]) -> api::LegStatus {
         LegStatus::Cleared
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::api::{AccountInput, AccountKind, HouseholdInput};
+    use mrk_money::Currency;
+    use pretty_assertions::assert_eq;
+
+    fn count(app: &App, table: &str) -> i64 {
+        app.store
+            .connection()
+            .query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r.get(0))
+            .unwrap()
+    }
+
+    /// UNBALANCED_ENTRY can't be reached through `dispatch` (a two-leg input expands
+    /// balanced), so it is proven here, at the write path every transaction goes through
+    /// (Q-transactions-3).
+    #[test]
+    fn an_unbalanced_entry_is_refused_at_the_write_path_and_writes_nothing() {
+        let mut app = App::open_in_memory().unwrap();
+        app.household_create(HouseholdInput {
+            name: "Casa".into(),
+            my_name: "Yo".into(),
+            base_currency: "CLP".into(),
+            locale: None,
+        })
+        .unwrap();
+        let account = app
+            .account_create(AccountInput {
+                name: "Cuenta".into(),
+                kind: AccountKind::Checking,
+                currency: "CLP".into(),
+                scope: None,
+                visibility: None,
+                institution: None,
+                number_mask: None,
+                opening_balance: None,
+            })
+            .unwrap()
+            .id;
+        let clp = |minor| Money::new(minor, Currency::CLP.code);
+        let unbalanced = JournalEntry {
+            tx_type: TxType::Expense,
+            account_leg: Posting::account(&account, clp(-10_000)),
+            counter_leg: Posting::category(&crate::seed::seed_id("expense.food"), clp(9_999)),
+        };
+        let row = EntryRow {
+            id: new_id(),
+            entry_date: "2026-11-21".into(),
+            kind: REGULAR.into(),
+            description: String::new(),
+            memo: String::new(),
+            deleted: false,
+        };
+        let before = (
+            count(&app, "journal_entry"),
+            count(&app, "posting"),
+            count(&app, "change_log"),
+        );
+        let e = app.insert_tx(None, &row, &unbalanced).unwrap_err();
+        assert_eq!(e.code, ErrorCode::UnbalancedEntry, "{e}");
+        assert_eq!(
+            (
+                count(&app, "journal_entry"),
+                count(&app, "posting"),
+                count(&app, "change_log")
+            ),
+            before
+        );
+    }
+}
