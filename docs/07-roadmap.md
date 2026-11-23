@@ -57,7 +57,7 @@ gantt
 - `mr-krabs-core`: `App` façade, `AccountService`, `TransactionService`; every mutation writes `change_log` + `field_clock` in the same transaction, stamped by the local device's HLC ([ADR-0010](adr/0010-change-log-from-m1.md)). ✅
 - Tauri: `app_bootstrap`, `household_create`, `account_*`, `tx_create/list/update/delete`, `money_parse`; specta bindings. ✅
 - UI: onboarding (household, base currency CLP), accounts sidebar with balances, transactions table, add/edit expense/income/transfer dialog. ✅
-- **Done when:** create a checking account, add expenses & a transfer to savings, balances correct; transfer not counted as expense; 100% of money logic covered by Rust tests. ✅
+- **Done when:** create a checking account, add expenses & a transfer to savings, balances correct; transfer not counted as expense; 100% of money logic covered by Rust tests. ✅ (every money path is in Rust with unit, property or acceptance tests; no coverage tool measures the percentage yet)
 - **Slices** (one PR each into `dev`; design review 2026-11-22):
   - Wave 1, in parallel: `fix/compose-schema-step` (compose test profile applies migrations in order, like CI) · `feat/sync-stamps` (HLC clock, local device, change-log writer, device-key migration) · `feat/ledger-domain` (`JournalEntry::validate`, transaction expansion, in-place leg edits, `account_balances`) · `feat/api-contract` (specta bindings, all M1 DTOs and commands as `NOT_IMPLEMENTED` stubs).
   - Wave 2: `feat/household-accounts` (after sync-stamps, ledger-domain, api-contract) · `feat/ui-onboarding-accounts` and `feat/ui-transactions` (after api-contract).
