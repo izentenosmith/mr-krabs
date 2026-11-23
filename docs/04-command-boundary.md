@@ -53,7 +53,7 @@ Implemented today (M0): `VALIDATION`, `NOT_FOUND`, `UNKNOWN_COMMAND`, `INTERNAL`
 
 ## Command catalogue (v1)
 
-Naming: `<area>_<verb>`. All are `async`. Inputs/outputs abbreviated. Implemented so far: `app_health` and `money_parse` (the live list is `COMMANDS` in `crates/mr-krabs-core/src/commands.rs`).
+Naming: `<area>_<verb>`. All are `async`. Inputs/outputs abbreviated. Implemented so far (the live list is `COMMANDS` in `crates/mr-krabs-core/src/commands.rs`): `app_health` and `money_parse` (M0), and the 15 M1 commands `app_bootstrap`, `household_create`, `settings_get`, `account_list`, `account_get`, `account_create`, `account_update`, `account_archive`, `category_tree`, `tx_create`, `tx_get`, `tx_list`, `tx_update`, `tx_delete`, `tx_restore`. The table below is the full target catalogue; signatures of the implemented commands follow the generated `packages/api-client/src/bindings.ts` where they differ from this sketch.
 
 | Area | Command | Input | Output |
 |---|---|---|---|

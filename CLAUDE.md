@@ -6,7 +6,7 @@ Guidance for AI coding agents (and humans) working in this repository.
 
 **Mr Krabs** — local-first personal & household finance desktop app for macOS. Tauri v2 shell, Rust core, SQLite storage, React + shadcn/ui frontend, P2P LAN sync between two devices. $0 infrastructure, no servers. Default currency **CLP** (configurable; USD, EUR, UF/CLF built in). UI language es-CL first.
 
-**Status:** M0 (foundation) is done and the M1 libraries are in place (router, i18n, forms, tables, thiserror, proptest, insta); the M1 slice itself (accounts, ledger, transactions) has not started. Follow `docs/07-roadmap.md` in order; do not start a new milestone unless asked.
+**Status:** M0 (foundation) and M1 (vertical slice: household onboarding, accounts with balances, expense/income/transfer transactions, change log from the first write, ES/EN UI) are done; the M1 journey is proved end to end through the devserver (`apps/devserver/src/journey.rs`). M2 has not started. Follow `docs/07-roadmap.md` in order; do not start a new milestone unless asked.
 
 ## Non-negotiable architecture rules
 

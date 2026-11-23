@@ -1952,6 +1952,7 @@ dependencies = [
  "axum",
  "http-body-util",
  "mr-krabs-core",
+ "rusqlite",
  "serde_json",
  "tokio",
  "tower",

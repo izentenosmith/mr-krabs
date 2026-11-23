@@ -36,19 +36,32 @@ gantt
 - UI [design system](../design-system/mr-krabs/MASTER.md) with semantic light/dark tokens; shared agent memory in `.memory/`.
 - **Done when:** `docker compose up` shows the UI talking to the core; `pnpm tauri dev` opens the app on macOS; CI green.
 
-### M1 · Vertical slice — "record an expense and see the balance"
-- **Progress:** libraries adopted ahead of the slice: `thiserror`, `proptest`, `insta`, `tracing-appender` file logs, `uuid` v7 + `jiff` declared; TanStack Router/Table/Virtual, `react-i18next`, `react-hook-form` + `zod`, shadcn Sonner/Command/Dialog/Chart. `mrk-money` items below are done (with property tests).
+### M1 · Vertical slice — "record an expense and see the balance" ✅
+- **Delivered** (PRs #17–#34 into `dev`, then the end-to-end journey; design review 2026-11-22):
+  - `mrk-sync` persisted HLC clock and a local device (UUIDv7) created at first open; device key and member nullable until pairing (migration 0003); `Store::record_change` writes `change_log` + `field_clock` (changed fields `{old,new}`) in the same SQL transaction as every replicated mutation ([ADR-0010](adr/0010-change-log-from-m1.md)); seeded rows are deterministic and never logged ([ADR-0008](adr/0008-deterministic-ids-for-seeded-rows.md)).
+  - `mrk-domain`: `JournalEntry::validate` (balanced per currency, archived accounts, account currency, transfer has no category leg), expansion of expense/income/transfer/opening balance into postings, in-place leg edits by role, `account_balances`, civil-date validation. Opening balances balance against an FX-trading leg ([ADR-0011](adr/0011-opening-balance-fx-leg.md)).
+  - `mrk-money`: every built-in currency's display string parses back; a currency marker must match the target currency.
+  - Core: 15 M1 commands behind one `commands::dispatch` shared by Tauri and the devserver — `app_bootstrap`, `household_create`, `settings_get`, `account_list` (with balances computed in Rust) / `account_get` / `account_create` (with opening balance) / `account_update` / `account_archive`, `category_tree`, `tx_create` / `tx_get` / `tx_list` (keyset paging) / `tx_update` / `tx_delete` / `tx_restore`. DTOs derive `specta::Type`; `packages/api-client/src/bindings.ts` is generated and checked for staleness. One synchronous `App` behind the shells' `Mutex`, one SQL transaction per command.
+  - UI: app shell with accounts sidebar (grouped by kind, balances), onboarding (household, base currency CLP), account create/edit, transactions table (TanStack Table + Virtual, filters, keyset paging), add/edit expense/income/transfer dialog with the category picker, delete with an 8 s undo toast, per-device ES/EN toggle (REQ-14, brought forward from M9), server field errors mapped to `errors.field.*` copy.
+  - Tooling: compose `test-back` applies migrations in order like CI; the schema guardrail fails when `foreign_key_check` itself errors.
+  - **Done-when proved:** `apps/devserver/src/journey.rs` (`jrn1_m1_done_when_over_http_on_a_file_db`) runs the whole journey over HTTP on a file-backed database — household in CLP, checking with 1.000.000, expenses 45.990 and 12.500, transfer 100.000 to savings → checking $841.510, savings $100.000, the transfer unsigned with no category, a change-log row for every mutation from the local device with increasing HLC, the same balances after reopening the file.
+- **Follow-ups moved to M2:**
+  - Process (X-10): the stage-ledger checker can't express "confirmed, routed to another PR"; a `routed: X-n` closure goes to the skills repo, not this one.
+  - Account query key (X-11): later UI keeps the single `["accounts"]` namespace and invalidates it after every transaction write.
+  - Transaction dialog (#33): F18, a stale form-level message after a server error is resolved; F19, a fail-then-recover path re-sends the transaction's stored category (an archived one is refused with a visible field error).
+  - Transactions table and dialog minors (#31): refetch every loaded page after a write (F8); a missing account yields an empty currency (F22); an unknown `accountId` in the URL (F33); a row hint for assistive tech (F35); Cancel during a write (F42); dotted field paths map to the form root (F48); test gaps (F20, F21, F36); and F37–F39, F51, F52 (listed in #31).
+- **Progress (before the slices):** libraries adopted ahead of the slice: `thiserror`, `proptest`, `insta`, `tracing-appender` file logs, `uuid` v7 + `jiff` declared; TanStack Router/Table/Virtual, `react-i18next`, `react-hook-form` + `zod`, shadcn Sonner/Command/Dialog/Chart.
 - `mrk-money`: `Money`, `CurrencyCode`, parse/format es-CL, `allocate`; property tests. ✅
-- `mrk-domain`: `JournalEntry::validate` (balanced per currency), `account_balances`.
-- `mrk-store`: migration runner, `0001_init.sql`, account + entry + posting repositories; writer actor + read pool; WAL.
-- `mr-krabs-core`: `App` façade, `AccountService`, `TransactionService`; every mutation writes `change_log` + `field_clock` in the same transaction, stamped by the local device's HLC ([ADR-0010](adr/0010-change-log-from-m1.md)).
-- Tauri: `app_bootstrap`, `household_create`, `account_*`, `tx_create/list/update/delete`, `money_parse`; specta bindings.
-- UI: onboarding (household, base currency CLP), accounts sidebar with balances, transactions table, add/edit expense/income/transfer dialog.
-- **Done when:** create a checking account, add expenses & a transfer to savings, balances correct; transfer not counted as expense; 100% of money logic covered by Rust tests.
+- `mrk-domain`: `JournalEntry::validate` (balanced per currency), `account_balances`. ✅
+- `mrk-store`: migration runner, `0001_init.sql`, account + entry + posting repositories; WAL. ✅ (writer actor + read pool arrive with M7, see [02](02-architecture.md))
+- `mr-krabs-core`: `App` façade, `AccountService`, `TransactionService`; every mutation writes `change_log` + `field_clock` in the same transaction, stamped by the local device's HLC ([ADR-0010](adr/0010-change-log-from-m1.md)). ✅
+- Tauri: `app_bootstrap`, `household_create`, `account_*`, `tx_create/list/update/delete`, `money_parse`; specta bindings. ✅
+- UI: onboarding (household, base currency CLP), accounts sidebar with balances, transactions table, add/edit expense/income/transfer dialog. ✅
+- **Done when:** create a checking account, add expenses & a transfer to savings, balances correct; transfer not counted as expense; 100% of money logic covered by Rust tests. ✅
 - **Slices** (one PR each into `dev`; design review 2026-11-22):
   - Wave 1, in parallel: `fix/compose-schema-step` (compose test profile applies migrations in order, like CI) · `feat/sync-stamps` (HLC clock, local device, change-log writer, device-key migration) · `feat/ledger-domain` (`JournalEntry::validate`, transaction expansion, in-place leg edits, `account_balances`) · `feat/api-contract` (specta bindings, all M1 DTOs and commands as `NOT_IMPLEMENTED` stubs).
   - Wave 2: `feat/household-accounts` (after sync-stamps, ledger-domain, api-contract) · `feat/ui-onboarding-accounts` and `feat/ui-transactions` (after api-contract).
-  - Wave 3: `feat/transactions` (after household-accounts) · `feat/m1-journey` (end-to-end check through the devserver, docs status; last).
+  - Wave 3: `feat/transactions` (after household-accounts) · `feat/m1-journey` (end-to-end check through the devserver, docs status; last). All merged.
 
 ### M2 · Categories, budgets, plan-vs-real (replaces the spreadsheet)
 - Seed category tree (see [01](01-requirements.md#default-category-tree-seed-es-cl)) as ordinary, editable rows; savings/investments seeded as accounts.
