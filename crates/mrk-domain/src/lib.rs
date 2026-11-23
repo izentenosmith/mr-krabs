@@ -13,8 +13,8 @@ pub mod report;
 
 pub use balance::{BalanceRow, account_balances};
 pub use category::{
-    BudgetLineRow, BudgetSum, CategoryError, CategoryKind, CategoryNode, MergePlan, normalize_name,
-    plan_merge, validate_kind_change, validate_parent,
+    BudgetLineRow, BudgetSum, CategoryError, CategoryKind, CategoryNode, MergePlan, lineage,
+    move_position, normalize_name, plan_merge, tree_parents, validate_kind_change, validate_parent,
 };
 pub use date::validate_civil_date;
 pub use entry::{

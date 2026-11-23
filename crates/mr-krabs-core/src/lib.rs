@@ -15,9 +15,8 @@ mod transactions;
 
 use std::path::{Path, PathBuf};
 
-use mrk_domain::{BudgetLineRow, CategoryKind, CategoryNode, plan_merge};
-use mrk_money::{Currency, CurrencyCode, Money, parse_es_cl};
-use mrk_store::{CategoryMergeWrite, SeedReport, Store};
+use mrk_money::{Currency, parse_es_cl};
+use mrk_store::{SeedReport, Store};
 
 pub use api::{ApiError, ErrorCode, HealthDto, MoneyDto, MoneyInput};
 
@@ -75,89 +74,6 @@ impl App {
     pub fn seed_household_defaults(&mut self) -> Result<SeedReport, ApiError> {
         let (categories, accounts) = seed_catalogue(&self.household_row()?)?;
         Ok(self.store.seed_defaults(&categories, &accounts)?)
-    }
-
-    /// Deletes a category (FR-BU-07). With `merge_into`, everything that references it moves
-    /// there first (postings, budget lines with colliding months summed, sub-categories, payee
-    /// defaults, rules, recurring templates, staged rows). Without it, the category must be
-    /// unused. Every row it touches is stamped by the local clock and logged (ADR-0010).
-    pub fn category_delete(&mut self, id: &str, merge_into: Option<&str>) -> Result<(), ApiError> {
-        let nodes = self.category_nodes()?;
-        if !nodes.iter().any(|n| n.id == id && n.live) {
-            return Err(ApiError::new(
-                ErrorCode::NotFound,
-                format!("no category {id}"),
-            ));
-        }
-        let Some(into) = merge_into else {
-            let refs = self
-                .store
-                .category_reference_count(id)
-                .map_err(ApiError::internal)?;
-            if refs > 0 {
-                return Err(ApiError::validation(
-                    "the category has transactions, budgets or sub-categories: choose a category to merge it into",
-                ));
-            }
-            return self.store.delete_category(id).map_err(ApiError::internal);
-        };
-        let lines = self
-            .store
-            .live_budget_lines(&[id, into])
-            .map_err(ApiError::internal)?
-            .into_iter()
-            .map(|b| {
-                let currency = CurrencyCode::new(&b.currency_code).map_err(ApiError::internal)?;
-                Ok(BudgetLineRow {
-                    id: b.id,
-                    category_id: b.category_id,
-                    period: b.period,
-                    scope: b.scope,
-                    member_id: b.member_id,
-                    amount: Money::new(b.amount_minor, currency),
-                })
-            })
-            .collect::<Result<Vec<_>, ApiError>>()?;
-        let plan = plan_merge(&nodes, &lines, id, into).map_err(ApiError::validation)?;
-        let write = CategoryMergeWrite {
-            from: plan.from,
-            into: plan.into,
-            reparent: plan.reparent,
-            move_budget_lines: plan.move_budget_lines,
-            sum_budget_lines: plan
-                .sum_budget_lines
-                .into_iter()
-                .map(|s| (s.target_id, s.amount.minor, s.absorbed_id))
-                .collect(),
-        };
-        self.store
-            .apply_category_merge(&write)
-            .map_err(ApiError::internal)
-    }
-
-    fn category_nodes(&self) -> Result<Vec<CategoryNode>, ApiError> {
-        self.store
-            .category_rows()
-            .map_err(ApiError::internal)?
-            .into_iter()
-            .map(|r| {
-                let kind = match r.kind.as_str() {
-                    "income" => CategoryKind::Income,
-                    "expense" => CategoryKind::Expense,
-                    other => {
-                        return Err(ApiError::internal(format!(
-                            "unknown category kind {other:?}"
-                        )));
-                    }
-                };
-                Ok(CategoryNode {
-                    id: r.id,
-                    parent_id: r.parent_id,
-                    kind,
-                    live: !r.deleted,
-                })
-            })
-            .collect()
     }
 }
 

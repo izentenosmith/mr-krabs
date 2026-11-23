@@ -357,7 +357,8 @@ impl App {
         Ok(ctx)
     }
 
-    /// An expense or income posts to a live, unarchived category of its own kind.
+    /// An expense or income posts to a live category of its own kind that is not archived,
+    /// itself or through an ancestor (REQ-18).
     fn check_category(&self, entry: &JournalEntry) -> Result<(), ApiError> {
         let Leg::Category(id) = &entry.counter_leg.leg else {
             return Ok(());
@@ -376,7 +377,7 @@ impl App {
                         "wrongKind",
                         format!("the category is not an {expected} category"),
                     ))
-                } else if c.is_archived {
+                } else if self.category_archived_in_effect(id)? {
                     Err(field_error(
                         ErrorCode::Validation,
                         "categoryId",

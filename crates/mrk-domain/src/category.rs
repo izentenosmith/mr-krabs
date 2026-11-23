@@ -49,6 +49,11 @@ pub enum CategoryError {
     MergeKindMismatch,
     /// Its children would be re-parented under one of their own descendants.
     MergeIntoDescendant,
+    /// A move's position is past the end of the new parent's children.
+    IndexOutOfRange {
+        index: usize,
+        len: usize,
+    },
     Money(MoneyError),
 }
 
@@ -65,6 +70,12 @@ impl fmt::Display for CategoryError {
             Self::MergeKindMismatch => write!(f, "categories of different kinds cannot be merged"),
             Self::MergeIntoDescendant => {
                 write!(f, "a category cannot be merged into its own sub-category")
+            }
+            Self::IndexOutOfRange { index, len } => {
+                write!(
+                    f,
+                    "position {index} is past the end of {len} sub-categories"
+                )
             }
             Self::Money(e) => write!(f, "{e}"),
         }
@@ -194,6 +205,83 @@ pub fn validate_kind_change(
     } else {
         Err(CategoryError::KindImmutable)
     }
+}
+
+/// The parent each live category is shown under (M1 #29 F3): its own parent when that is live,
+/// otherwise none (a root). A parent cycle, which only sync can create, is broken at its
+/// smallest id, which becomes a root; so every live category appears exactly once and every
+/// walk up the result ends.
+pub fn tree_parents(nodes: &[CategoryNode]) -> BTreeMap<String, Option<String>> {
+    let live: BTreeSet<&str> = nodes
+        .iter()
+        .filter(|n| n.live)
+        .map(|n| n.id.as_str())
+        .collect();
+    let mut parents: BTreeMap<String, Option<String>> = nodes
+        .iter()
+        .filter(|n| n.live)
+        .map(|n| {
+            let p = n.parent_id.clone().filter(|p| live.contains(p.as_str()));
+            (n.id.clone(), p)
+        })
+        .collect();
+    // Nodes already known to reach a root.
+    let mut rooted: BTreeSet<String> = BTreeSet::new();
+    let ids: Vec<String> = parents.keys().cloned().collect();
+    for start in ids {
+        let mut path: Vec<String> = Vec::new();
+        let mut cur = Some(start);
+        while let Some(id) = cur {
+            if rooted.contains(&id) {
+                break;
+            }
+            if let Some(at) = path.iter().position(|p| *p == id) {
+                // `path[at..]` is a cycle: its smallest id becomes a root.
+                if let Some(min) = path[at..].iter().min() {
+                    parents.insert(min.clone(), None);
+                }
+                break;
+            }
+            cur = parents.get(&id).cloned().flatten();
+            path.push(id);
+        }
+        rooted.extend(path);
+    }
+    parents
+}
+
+/// `id` followed by its ancestors, nearest first, in a `tree_parents` map (empty when `id` is
+/// not in it).
+pub fn lineage<'a>(parents: &'a BTreeMap<String, Option<String>>, id: &str) -> Vec<&'a str> {
+    let mut out = Vec::new();
+    let mut cur = parents.get_key_value(id).map(|(k, _)| k.as_str());
+    while let Some(c) = cur {
+        out.push(c);
+        // `tree_parents` is acyclic; the bound only guards a map built some other way.
+        if out.len() > parents.len() {
+            break;
+        }
+        cur = parents.get(c).and_then(|p| p.as_deref());
+    }
+    out
+}
+
+/// The new order of a parent's children after moving `id` to `index` among them.
+/// `siblings` is their current order without `id`; `index` may equal its length (last).
+pub fn move_position(
+    siblings: &[String],
+    id: &str,
+    index: usize,
+) -> Result<Vec<String>, CategoryError> {
+    if index > siblings.len() {
+        return Err(CategoryError::IndexOutOfRange {
+            index,
+            len: siblings.len(),
+        });
+    }
+    let mut order: Vec<String> = siblings.iter().filter(|s| *s != id).cloned().collect();
+    order.insert(index.min(order.len()), id.to_owned());
+    Ok(order)
 }
 
 /// A live budget line of one of the two categories being merged.
@@ -431,7 +519,71 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn tree_parents_roots_orphans_and_breaks_cycles_at_the_smallest_id() {
+        let mut t = tree();
+        t[0].live = false; // food deleted: super and delivery become roots
+        t.push(node("b", Some("a"), Expense));
+        t.push(node("a", Some("c"), Expense));
+        t.push(node("c", Some("b"), Expense));
+        t.push(node("d", Some("c"), Expense));
+        let p = tree_parents(&t);
+        assert!(!p.contains_key("food"));
+        assert_eq!(p["super"], None);
+        assert_eq!(p["organic"].as_deref(), Some("super"));
+        assert_eq!(p["a"], None);
+        assert_eq!(p["b"].as_deref(), Some("a"));
+        assert_eq!(p["c"].as_deref(), Some("b"));
+        assert_eq!(lineage(&p, "d"), ["d", "c", "b", "a"]);
+        assert_eq!(lineage(&p, "organic"), ["organic", "super"]);
+        assert!(lineage(&p, "food").is_empty());
+    }
+
+    #[test]
+    fn move_position_inserts_at_the_index() {
+        let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+        assert_eq!(
+            move_position(&s(&["a", "b"]), "x", 0).unwrap(),
+            s(&["x", "a", "b"])
+        );
+        assert_eq!(
+            move_position(&s(&["a", "b"]), "x", 2).unwrap(),
+            s(&["a", "b", "x"])
+        );
+        assert_eq!(
+            move_position(&s(&["a", "b"]), "x", 3),
+            Err(CategoryError::IndexOutOfRange { index: 3, len: 2 })
+        );
+    }
+
     proptest! {
+        /// Whatever the parent links (cycles included), every live node is in
+        /// `tree_parents` and every walk up it reaches a root.
+        #[test]
+        fn tree_parents_is_acyclic_and_complete(
+            links in proptest::collection::vec(proptest::option::of(0usize..8), 8),
+            dead in proptest::collection::vec(any::<bool>(), 8),
+        ) {
+            let nodes: Vec<CategoryNode> = links
+                .iter()
+                .enumerate()
+                .map(|(i, p)| CategoryNode {
+                    id: format!("c{i}"),
+                    parent_id: p.filter(|p| *p != i).map(|p| format!("c{p}")),
+                    kind: Expense,
+                    live: !dead[i],
+                })
+                .collect();
+            let parents = tree_parents(&nodes);
+            prop_assert_eq!(parents.len(), dead.iter().filter(|d| !**d).count());
+            for id in parents.keys() {
+                let up = lineage(&parents, id);
+                prop_assert!(up.len() <= parents.len());
+                let top = up.last().copied().unwrap_or_default();
+                prop_assert_eq!(&parents[top], &None);
+            }
+        }
+
         /// Applying only the moves `validate_parent` accepts never produces a cycle.
         #[test]
         fn accepted_moves_never_create_a_cycle(
