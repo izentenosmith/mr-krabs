@@ -105,21 +105,7 @@ impl Store {
             .clone()
             .map(|s| (s.scope, s.owner_member_id))
             .unzip();
-        let mut stmt = self.conn.prepare(&format!(
-            "SELECT {ENTRY_COLS} FROM journal_entry e \
-             WHERE e.deleted = 0 \
-               AND (?1 IS NULL OR e.entry_date >= ?1) \
-               AND (?2 IS NULL OR e.entry_date <= ?2) \
-               AND (?3 IS NULL OR (e.entry_date, e.id) < (?3, ?4)) \
-               AND (?5 IS NULL OR EXISTS (SELECT 1 FROM posting p \
-                     WHERE p.entry_id = e.id AND p.deleted = 0 AND p.leg = 'account' \
-                       AND p.account_id = ?5)) \
-               AND (?6 IS NULL OR EXISTS (SELECT 1 FROM posting p \
-                     JOIN account a ON a.id = p.account_id \
-                     WHERE p.entry_id = e.id AND p.deleted = 0 AND p.leg = 'account' \
-                       AND a.scope = ?6 AND a.owner_member_id IS ?7)) \
-             ORDER BY e.entry_date DESC, e.id DESC LIMIT ?8"
-        ))?;
+        let mut stmt = self.conn.prepare(&page_sql(f.account_id.is_some()))?;
         let rows = stmt
             .query_map(
                 rusqlite::params![
@@ -184,6 +170,29 @@ impl Store {
     }
 }
 
+/// The page query. With an account, the candidates come from that account's live legs
+/// (`ix_posting_account`), so a rarely used account doesn't scan every entry (F6).
+fn page_sql(by_account: bool) -> String {
+    let account = if by_account {
+        "e.id IN (SELECT p.entry_id FROM posting p \
+             WHERE p.account_id = ?5 AND p.deleted = 0 AND p.leg = 'account')"
+    } else {
+        "?5 IS NULL"
+    };
+    format!(
+        "SELECT {ENTRY_COLS} FROM journal_entry e \
+         WHERE e.deleted = 0 AND {account} \
+           AND (?1 IS NULL OR e.entry_date >= ?1) \
+           AND (?2 IS NULL OR e.entry_date <= ?2) \
+           AND (?3 IS NULL OR (e.entry_date, e.id) < (?3, ?4)) \
+           AND (?6 IS NULL OR EXISTS (SELECT 1 FROM posting p \
+                 JOIN account a ON a.id = p.account_id \
+                 WHERE p.entry_id = e.id AND p.deleted = 0 AND p.leg = 'account' \
+                   AND a.scope = ?6 AND a.owner_member_id IS ?7)) \
+         ORDER BY e.entry_date DESC, e.id DESC LIMIT ?8"
+    )
+}
+
 impl Write<'_> {
     /// Inserts an entry and its postings, each logged as created.
     pub fn insert_entry(
@@ -239,4 +248,45 @@ fn posting_cols(p: &PostingRow) -> [crate::write::Col<'_>; 9] {
         ("status", &p.status),
         ("deleted", &p.deleted),
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::page_sql;
+    use crate::Store;
+
+    fn plan(sql: &str) -> String {
+        let mut s = Store::open_in_memory().unwrap();
+        s.migrate().unwrap();
+        let mut stmt = s
+            .connection()
+            .prepare(&format!("EXPLAIN QUERY PLAN {sql}"))
+            .unwrap();
+        let rows: Vec<String> = stmt
+            .query_map(
+                rusqlite::params![
+                    None::<String>,
+                    None::<String>,
+                    None::<String>,
+                    None::<String>,
+                    "acc",
+                    None::<String>,
+                    None::<String>,
+                    101
+                ],
+                |r| r.get::<_, String>(3),
+            )
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        rows.join("\n")
+    }
+
+    #[test]
+    fn an_account_page_reads_that_accounts_legs_through_its_index_instead_of_scanning_entries() {
+        let p = plan(&page_sql(true));
+        // Candidates come from the account's legs; no walk over every entry by date.
+        assert!(!p.contains("SCAN e"), "{p}");
+        assert!(p.contains("ix_posting_account"), "{p}");
+    }
 }
