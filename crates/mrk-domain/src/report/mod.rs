@@ -9,11 +9,13 @@ use mrk_money::{CurrencyCode, Money, MoneyError};
 use crate::category::CategoryKind;
 use crate::ledger::Leg;
 
+mod calendar;
 mod flows;
 mod matrix;
 mod period;
 mod tree;
 
+pub use calendar::month_calendar;
 pub use matrix::budget_matrix;
 pub use tree::{CategoryTree, TreeRow};
 
@@ -209,6 +211,13 @@ pub(crate) fn add_to(
     Ok(())
 }
 
+/// The checked sum of `amounts` (zero when empty).
+pub(crate) fn sum_money(amounts: &[Money], base: CurrencyCode) -> Result<Money, ReportError> {
+    amounts
+        .iter()
+        .try_fold(Money::zero(base), |s, a| Ok(s.checked_add(*a)?))
+}
+
 /// The total of a kind's root rows in a rolled-up map: everything of that kind in the tree.
 pub(crate) fn sum_roots(
     tree: &CategoryTree,
@@ -268,14 +277,6 @@ pub struct MonthCalendar {
     pub income_total: Money,
     pub expense_total: Money,
     pub excluded: Vec<Excluded>,
-}
-
-pub fn month_calendar(
-    _data: &ReportData,
-    _viewer: &Viewer,
-    _month: &str,
-) -> Result<MonthCalendar, ReportError> {
-    unimplemented!("R0: month_calendar")
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
