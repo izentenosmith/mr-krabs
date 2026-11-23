@@ -7,6 +7,10 @@ use mrk_money::{CurrencyCode, Money, MoneyError};
 use crate::category::CategoryKind;
 use crate::ledger::Leg;
 
+mod tree;
+
+pub use tree::{CategoryTree, TreeRow};
+
 /// An account's kind, as stored in `account.kind`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum AccountKind {
@@ -127,43 +131,6 @@ pub enum ReportError {
     InvalidRange { from: String, to: String },
     #[error(transparent)]
     Money(#[from] MoneyError),
-}
-
-/// A category as a report row: its place in the tree.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct TreeRow {
-    pub id: String,
-    pub parent_id: Option<String>,
-    pub depth: u32,
-    pub kind: CategoryKind,
-    pub name: String,
-    pub archived: bool,
-    /// Has at least one child in the tree.
-    pub is_group: bool,
-}
-
-/// The live category tree in display order.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct CategoryTree {
-    rows: Vec<TreeRow>,
-}
-
-impl CategoryTree {
-    pub fn new(_categories: &[ReportCategory]) -> Self {
-        unimplemented!("R0: CategoryTree::new")
-    }
-
-    pub fn rows(&self) -> &[TreeRow] {
-        &self.rows
-    }
-
-    pub fn rollup(
-        &self,
-        _own: &std::collections::BTreeMap<String, Money>,
-        _base: CurrencyCode,
-    ) -> Result<std::collections::BTreeMap<String, Money>, ReportError> {
-        unimplemented!("R0: CategoryTree::rollup")
-    }
 }
 
 /// Planned vs actual for one category and period.

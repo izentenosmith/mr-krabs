@@ -33,13 +33,18 @@ fn is_civil_date(date: &str) -> bool {
     let (Some(year), Some(month), Some(day)) = (number(0..4), number(5..7), number(8..10)) else {
         return false;
     };
+    days_in_month(year, month).is_some_and(|n| (1..=n).contains(&day))
+}
+
+/// Days in `month` (1–12) of the proleptic Gregorian `year`; `None` for any other month.
+/// Leap years are divisible by 4, except centuries not divisible by 400.
+pub(crate) fn days_in_month(year: u32, month: u32) -> Option<u32> {
     let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
-    let days_in_month = match month {
-        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
-        4 | 6 | 9 | 11 => 30,
-        2 if leap => 29,
-        2 => 28,
-        _ => return false,
-    };
-    (1..=days_in_month).contains(&day)
+    match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => Some(31),
+        4 | 6 | 9 | 11 => Some(30),
+        2 if leap => Some(29),
+        2 => Some(28),
+        _ => None,
+    }
 }
