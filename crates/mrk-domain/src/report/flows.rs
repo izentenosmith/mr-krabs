@@ -22,12 +22,24 @@ pub(crate) struct CategoryFlow<'a> {
     pub actual: Money,
 }
 
+/// Money moved by a transfer into (+) or out of (−) a savings or investment account.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct SavedFlow {
+    pub month: Month,
+    pub amount: Money,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Flows<'a> {
     pub categories: Vec<CategoryFlow<'a>>,
+    pub saved: Vec<SavedFlow>,
 }
 
 /// Reads the postings of `data` that fall in `range` and in the viewer's view.
+///
+/// An entry's category legs count when one of its account legs is in view; a transfer (no
+/// category leg) is never income or expense and only moves "saved". Opening-balance entries
+/// never count (M1/DEC-4, ADR-0011).
 pub(crate) fn flows<'a>(
     data: &'a ReportData,
     tree: &CategoryTree,
@@ -38,7 +50,10 @@ pub(crate) fn flows<'a>(
         data.accounts.iter().map(|a| (a.id.as_str(), a)).collect();
     let mut entries: BTreeMap<&str, Vec<&ReportPosting>> = BTreeMap::new();
     for p in &data.postings {
-        if validate_civil_date(&p.entry_date).is_ok() && range.contains(&p.entry_date) {
+        if !p.opening_balance
+            && validate_civil_date(&p.entry_date).is_ok()
+            && range.contains(&p.entry_date)
+        {
             entries.entry(p.entry_id.as_str()).or_default().push(p);
         }
     }
@@ -50,6 +65,24 @@ pub(crate) fn flows<'a>(
             .iter()
             .any(|p| matches!(&p.leg, Leg::Account(id) if in_view(id)));
         if !entry_in_view {
+            continue;
+        }
+        let transfer = !legs.iter().any(|p| matches!(p.leg, Leg::Category(_)));
+        if transfer {
+            // Saved = the net of the in-view saving-account legs of a transfer: into savings
+            // is +, out is −, savings ↔ savings nets to 0, a card payment has none.
+            for p in legs {
+                let Leg::Account(id) = &p.leg else { continue };
+                let saving = accounts
+                    .get(id.as_str())
+                    .is_some_and(|a| a.kind.is_saving() && viewer.sees(&a.scope));
+                if saving && p.amount.currency == data.base {
+                    out.saved.push(SavedFlow {
+                        month: Month::of_date(&p.entry_date),
+                        amount: p.amount,
+                    });
+                }
+            }
             continue;
         }
         for p in legs {

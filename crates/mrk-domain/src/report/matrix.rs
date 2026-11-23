@@ -31,6 +31,11 @@ pub fn budget_matrix(
     for f in &flows.categories {
         add_to(&mut actual_own[month_index(f.month)], f.category, f.actual)?;
     }
+    let mut saved = vec![Money::zero(base); 12];
+    for f in &flows.saved {
+        let i = month_index(f.month);
+        saved[i] = saved[i].checked_add(f.amount)?;
+    }
     let mut planned_own = vec![BTreeMap::new(); 12];
     for line in data.budget_lines.iter().filter(|l| viewer.sees(&l.scope)) {
         let Ok(m) = Month::parse(&line.period) else {
@@ -72,7 +77,7 @@ pub fn budget_matrix(
             )
         };
         let (income, expense) = (total(CategoryKind::Income)?, total(CategoryKind::Expense)?);
-        let saved = Money::zero(base);
+        let saved = saved[i];
         let free_cash_flow = income
             .actual
             .checked_sub(expense.actual)?
