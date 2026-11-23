@@ -62,61 +62,14 @@ impl App {
 
     pub fn tx_list(&self, query: TxQuery) -> Result<Page<TxRowDto>, ApiError> {
         command("tx_list", || {
-            let mut f = Fields::default();
             let limit = query.limit.unwrap_or(LIMIT_DEFAULT);
-            if !(1..=LIMIT_MAX).contains(&limit) {
-                f.add("limit", "outOfRange");
-            }
-            for (field, date) in [("from", &query.from), ("to", &query.to)] {
-                if date
-                    .as_deref()
-                    .is_some_and(|d| validate_civil_date(d).is_err())
-                {
-                    f.add(field, "invalidDate");
-                }
-            }
-            let after = query.cursor.as_deref().map(decode_cursor);
-            if after.as_ref().is_some_and(Option::is_none) {
-                f.add("cursor", "invalid");
-            }
-            f.finish()?;
-            if let Some(a) = &query.account_id {
-                check_id(a)?;
-                if self.store.account(a)?.is_none() {
-                    return Err(ApiError::new(
-                        ErrorCode::NotFound,
-                        format!("no account {a}"),
-                    ));
-                }
-            }
-            let scope = match query.view {
-                View::Combined => None,
-                View::Household => Some(ScopeFilter {
-                    scope: "household".into(),
-                    owner_member_id: None,
-                }),
-                View::Personal => match self.store.local_member_id()? {
-                    Some(me) => Some(ScopeFilter {
-                        scope: "personal".into(),
-                        owner_member_id: Some(me),
-                    }),
-                    None => {
-                        return Ok(Page {
-                            items: Vec::new(),
-                            next_cursor: None,
-                        });
-                    }
-                },
+            let Some(filter) = self.list_filter(&query, limit)? else {
+                return Ok(Page {
+                    items: Vec::new(),
+                    next_cursor: None,
+                });
             };
-            let mut entries = self.store.entry_page(&EntryFilter {
-                account_id: query.account_id.clone(),
-                from: query.from.clone(),
-                to: query.to.clone(),
-                scope,
-                after: after.flatten(),
-                // One more than the page: its presence says there is a next page.
-                limit: limit + 1,
-            })?;
+            let mut entries = self.store.entry_page(&filter)?;
             let next_cursor = (entries.len() > limit as usize).then(|| {
                 entries.truncate(limit as usize);
                 entries
@@ -286,6 +239,60 @@ impl App {
         })?;
         tracing::debug!(entry = %entry.id, deleted, "transaction deleted flag set");
         Ok(())
+    }
+
+    /// Checks a `tx_list` query and turns it into the store's page filter; `None` when the
+    /// query can match nothing (a personal view before there is a member).
+    fn list_filter(&self, query: &TxQuery, limit: u32) -> Result<Option<EntryFilter>, ApiError> {
+        let mut f = Fields::default();
+        if !(1..=LIMIT_MAX).contains(&limit) {
+            f.add("limit", "outOfRange");
+        }
+        for (field, date) in [("from", &query.from), ("to", &query.to)] {
+            if date
+                .as_deref()
+                .is_some_and(|d| validate_civil_date(d).is_err())
+            {
+                f.add(field, "invalidDate");
+            }
+        }
+        let after = query.cursor.as_deref().map(decode_cursor);
+        if after.as_ref().is_some_and(Option::is_none) {
+            f.add("cursor", "invalid");
+        }
+        f.finish()?;
+        if let Some(a) = &query.account_id {
+            check_id(a)?;
+            if self.store.account(a)?.is_none() {
+                return Err(ApiError::new(
+                    ErrorCode::NotFound,
+                    format!("no account {a}"),
+                ));
+            }
+        }
+        let scope = match query.view {
+            View::Combined => None,
+            View::Household => Some(ScopeFilter {
+                scope: "household".into(),
+                owner_member_id: None,
+            }),
+            View::Personal => match self.store.local_member_id()? {
+                Some(me) => Some(ScopeFilter {
+                    scope: "personal".into(),
+                    owner_member_id: Some(me),
+                }),
+                None => return Ok(None),
+            },
+        };
+        Ok(Some(EntryFilter {
+            account_id: query.account_id.clone(),
+            from: query.from.clone(),
+            to: query.to.clone(),
+            scope,
+            after: after.flatten(),
+            // One more than the page: its presence says there is a next page.
+            limit: limit + 1,
+        }))
     }
 
     /// Validates `entry` against the live accounts and categories it posts to and writes it,
