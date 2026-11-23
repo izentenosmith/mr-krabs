@@ -1201,3 +1201,64 @@ fn r_f1_a_change_that_would_overflow_a_balance_is_refused_and_writes_nothing() {
     assert_eq!(env.state(), before);
     env.ok("account_list", json!({ "query": { "view": "combined" } }));
 }
+
+#[test]
+fn r_f2_update_onto_a_wrong_kind_archived_or_unknown_category_is_refused_and_writes_nothing() {
+    let mut env = Env::new("rf2");
+    let a = env.account("A", None, false);
+    let id = env.create_id(expense(&a, "1.000", "2026-11-21"));
+    env.exec(&format!(
+        "UPDATE category SET is_archived = 1 WHERE id = '{}'",
+        seed_id("expense.food.delivery")
+    ));
+    let before = env.state();
+    let with = |category: String| {
+        let mut x = expense(&a, "1.000", "2026-11-21");
+        x["categoryId"] = json!(category);
+        json!({ "id": id, "input": x })
+    };
+    let cases = [
+        (salary(), ErrorCode::Validation, "errors.field.wrongKind"),
+        (
+            seed_id("expense.food.delivery"),
+            ErrorCode::Validation,
+            "errors.field.archived",
+        ),
+        (
+            uuid().to_owned(),
+            ErrorCode::NotFound,
+            "errors.field.notFound",
+        ),
+    ];
+    for (category, code, key) in cases {
+        let e = env.err("tx_update", with(category));
+        field_error(&e, code, "categoryId", key);
+    }
+    assert_eq!(env.state(), before);
+}
+
+#[test]
+fn r_f3_rows_of_an_entry_on_a_private_account_are_logged_private() {
+    let mut env = Env::new("rf3");
+    let shared = env.account("A", None, false);
+    let mine = env.ok(
+        "account_create",
+        json!({ "input": {
+            "name": "Mía", "kind": "checking", "currency": "CLP",
+            "scope": "personal", "visibility": "private"
+        } }),
+    )["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let private = env.create_id(transfer(&shared, &mine, "1.000", "2026-11-21"));
+    let household = env.create_id(expense(&shared, "1.000", "2026-11-21"));
+    let vis = |env: &Env, entry: &str| {
+        env.texts(&format!(
+            "SELECT DISTINCT visibility FROM change_log WHERE entity_id = '{entry}' \
+             OR entity_id IN (SELECT id FROM posting WHERE entry_id = '{entry}')"
+        ))
+    };
+    assert_eq!(vis(&env, &private), vec!["private"]);
+    assert_eq!(vis(&env, &household), vec!["household"]);
+}
