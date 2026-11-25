@@ -200,11 +200,11 @@ Focus ring always visible: `ring-[3px] ring-ring/50` (Tailwind `focus-visible:`)
 - **Page header row** (44px): page title (§3) on the left, the page's controls after it,
   the page's single primary button last (if it has one). This row *is* the toolbar of §5's
   sketch: no page has a second toolbar, stepper or primary above it.
-- **Period helper** (**proposed, pending Q-m2-design-system-2**): one module,
-  `src/lib/period.ts`, holds the only calendar arithmetic in TS — previous/next month or year,
-  a month's first and last civil day, "the 12 months ending with m" — and the only percent
-  presentation (basis points → "12,7 %" in the UI language, `null` → "—"). It never touches
-  money. Every page uses it instead of its own date or percent code.
+- **Period helper** (X-17): one tested module, `apps/desktop/src/lib/period.ts`, holds the
+  only calendar arithmetic in TS — previous/next month or year, the 12-month window ending at
+  a month, a month's first and last civil day — used **only to build query inputs**; Rust
+  still validates every period and date. It never touches money and never formats a
+  percentage (those arrive as `PercentDto.display`).
 - **Shared page rules** (matrix, calendar and dashboard pages in `pages/`): row semantics,
   sticky rules, section rows, drill-down, credits and the excluded-currency notice
   (DEC-29 Q8) are specified once in `pages/budget.md` and reused.
@@ -273,9 +273,9 @@ Lists over 50 rows are virtualized (NFR-05).
   labelled in text needs no tooltip and, if it is itself a `<table>`, no separate table view.
 - Series values arrive pre-computed from Rust; the UI renders only. Every number shown
   (tooltip, label, table) is a `display` string; there are no numeric axis tick labels,
-  because they would need number formatting in TS. **Proposed, pending
-  Q-m2-design-system-2:** the chart may read `minor` as a JS number and negate outflows only
-  to position marks, leaving scaling to the charting library; nothing shown is derived from it.
+  because they would need number formatting in TS. Plotted values arrive as Rust-computed
+  signed `MoneyDto` plot values (X-17); the UI passes `Number(minor)` to the chart library as
+  an opaque coordinate and does nothing else with it.
 - Marks: bars 4px radius on the data end, anchored to the baseline; 2px `card` gap between
   stacked segments; lines 2px; markers 8px with a 2px `card` ring; gridlines `border`,
   horizontal only. Legend and labels use text tokens (`foreground`, `muted-foreground`),

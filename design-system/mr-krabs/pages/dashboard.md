@@ -34,7 +34,7 @@ Resumen                                              ‹ Noviembre 2026 ›
   `view: "combined"` (as budget.md). This page has no primary button.
 - The shown month drives everything: the tiles and "Gastos por grupo" show that month
   (`report_spending {from: m, to: m}`); the cash-flow chart shows the 12 months ending with it
-  (`report_cash_flow {from: m − 11, to: m}`, months from the period helper, MASTER §5.4).
+  (`report_cash_flow {from, to}` with the 12-month window from the period helper, MASTER §5.4).
 - Sections stack vertically, 24px apart, each a `Card` (border, no shadow, `p-4`); the title
   `text-base font-semibold`, the period after it in `text-sm text-muted-foreground`.
 - **Excluded currencies:** each card shows its own DTO's `excluded` line (shared), under its
@@ -51,26 +51,25 @@ as MASTER §3's hero figure (`text-[28px] font-semibold tabular-nums`), the show
 |---|---|---|
 | Ingresos | `income` | `success` (MASTER §2 income) |
 | Gastos | `expense` | `foreground` |
-| Ahorro e inversión | `saved` | `foreground`; second line `text-xs text-muted-foreground` "{tasa} de los ingresos" from `savingsRateBp`, or "—" when it is `null` (no income) |
+| Ahorro e inversión | `saved` | `foreground`; second line `text-xs text-muted-foreground` "{tasa} de los ingresos" with the savings rate's `PercentDto.display`, or "—" when it is `null` (no income) |
 | Flujo libre | `freeCashFlow` | `foreground`; negative `minor`: `destructive` + `CircleAlert` + visible "déficit" |
 
-A percentage is shown from basis points through the one percent helper (MASTER §5.4,
-**pending Q-m2-design-system-2**). FR-RP-02's "net" (income − expense) is not a tile: DEC-29
+Percentages arrive as `PercentDto {bp, display}` formatted in Rust (X-17); the UI shows
+`display` and never formats `bp`. FR-RP-02's "net" (income − expense) is not a tile: DEC-29
 Q7 defines free cash flow as the month's bottom line; a separate net is an M2 follow-up for the
 nexus if the owner wants it.
 
 ## Cash flow chart
 
-- **Form:** one bar group per month on a shared zero baseline (MASTER §8). **Ingresos**
-  (`chart-1`) is plotted at its value; **Gastos** (`chart-2`) and **Ahorro e inversión**
-  (`chart-3`) are plotted at their negated value, stacked with Gastos next to the baseline.
-  So a negative saved (more taken out of savings than put in) rises above zero, as money
-  coming in. **Flujo libre** is a line in `foreground` (2px) with 8px dot markers ringed 2px in
-  `card`: a different mark, so it never depends on color.
-- **Geometry (proposed, pending Q-m2-design-system-2):** to place marks the chart reads `minor`
-  as a JS number and negates outflows; the charting library scales them. Nothing shown to the
-  user is derived from these numbers. Until the ruling, this is a proposal, not a granted
-  exception to CLAUDE.md rule 5.
+- **Form:** one bar group per month on a shared zero baseline (MASTER §8): **Ingresos**
+  (`chart-1`) above zero; **Gastos** (`chart-2`) and **Ahorro e inversión** (`chart-3`)
+  stacked below zero, Gastos next to the baseline. **Flujo libre** is a line in `foreground`
+  (2px) with 8px dot markers ringed 2px in `card`: a different mark, so it never depends on
+  color.
+- **Plot values (X-17):** each series point carries a Rust-computed signed plot value as a
+  `MoneyDto` (outflows negative, so a net withdrawal from savings rises above zero as money
+  coming in). The UI passes `Number(plot.minor)` to the chart library as an opaque
+  coordinate and does nothing else with it; every number a person reads is a `display`.
 - **Marks:** MASTER §8; bar width 60% of the band.
 - **Axes:** x = short month names in the UI language (`text-xs text-muted-foreground`), the
   shown month `font-semibold`. No y-axis tick labels (MASTER §8). The zero baseline is 1px
@@ -97,18 +96,19 @@ nexus if the owner wants it.
 ## Gastos por grupo
 
 - The rows of `BreakdownDto` whose `category.depth` is 0 (top-level expense groups, rolled up,
-  FR-BU-08), in the DTO's order. Cross-slice ask (R1): order rows by amount, largest first.
+  FR-BU-08), in the DTO's order: largest amount first (X-17).
   A ranked bar list: one series, every value directly labelled, so no legend and no tooltip
   (MASTER §8 exemptions).
 - A `<table>` with `aria-label` "Gastos por grupo, {mes}"; column headers (visually hidden)
   Grupo · Barra · Monto · Porcentaje. Cells: the group name (`text-sm`, 180px, truncate,
   full name in `title`) holding a link-style button (shared drill-down; `aria-label` "Ver
   gastos de {grupo}, {mes}"); the bar (decorative, `aria-hidden`); `amount.display`
-  (right-aligned, `tabular-nums`); the share from `shareBp` through the percent helper, or "—"
-  when `null` (`text-muted-foreground`).
+  (right-aligned, `tabular-nums`); the share's `PercentDto.display`, or "—" when `null`
+  (`text-muted-foreground`).
 - The bar is `chart-2` (the "Gastos" color, so color follows the entity across the page), 12px
-  tall, 4px radius at its end, no track. Its length is the share, set through a CSS variable
-  (`style="--share-bp: 2720"`, `width: calc(var(--share-bp) * 0.01%)`). A negative
+  tall, 4px radius at its end, no track. Its length is the share, from the share's `bp` set through a
+  CSS variable (`style="--share-bp: 2720"`, `width: calc(var(--share-bp) * 0.01%)`): CSS
+  draws it, TS does no arithmetic. A negative
   `amount.minor` (a credit, shared) draws no bar.
 
 ## States (MASTER §7.2)

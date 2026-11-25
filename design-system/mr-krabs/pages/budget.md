@@ -2,7 +2,8 @@
 
 Overrides and extends [MASTER.md](../MASTER.md) for the budget page (FR-BU-02, FR-BU-03,
 FR-BU-08, FR-RP-07; DEC-29, DEC-30). Data: `budget_matrix` → `BudgetMatrixDto`, `budget_set`,
-`budget_copy_month` (C0 contract, `packages/api-client/src/bindings.ts`). Everything not stated
+`budget_copy_month` (C0 contract, `packages/api-client/src/bindings.ts`, with X-17's additions;
+exact field names as #37 merges them). Everything not stated
 here follows MASTER. Rules marked **shared** are reused by `calendar.md` and `dashboard.md`.
 
 ## Layout
@@ -64,8 +65,9 @@ formats them, sign included.)
   (`income`), "Total gastos" (`expense`), "Ahorro e inversión" (`saved`), "Flujo libre"
   (`freeCashFlow`). `font-medium`, read-only, no drill-down; their Diferencia is the plain
   `display` in `muted-foreground` with no state. "Flujo libre" with a negative actual uses
-  `destructive` + `CircleAlert` + visible "déficit". (`summary.totalExpenses` is not shown
-  until its meaning is defined, C0 cross-slice note.)
+  `destructive` + `CircleAlert` + visible "déficit". "Total gastos" is the `expense` summary
+  row (X-17 drops the separate total-expenses field). In year mode the summary rows show their
+  `year` cell in Total too.
 - A value the DTO marks as absent renders "—" in `muted-foreground` with a visually hidden
   "Sin dato".
 
@@ -77,9 +79,10 @@ months; default the current month.
 
 ### Year mode ("Año")
 
-Columns: Categoría · Ene … Dic — **actuals only** (DEC-30 Q11), 112px per month, short
-month names in the UI language with the full name as `aria-label`. There is no Total column:
-the DTO carries no annual total and the UI does not add. The stepper steps years. The
+Columns: Categoría · Ene … Dic · Total — **actuals only** (DEC-30 Q11), 112px per month
+(Total 128px, `font-medium`), short month names in the UI language with the full name as
+`aria-label`. Total is the row's `year` cell actual from Rust (X-17); the UI never adds
+months. The stepper steps years. The
 current month's header has `bg-accent` and `aria-current="date"`. "Copiar mes anterior" is
 hidden. At 1024×700 the table scrolls horizontally behind the sticky column.
 
@@ -112,8 +115,9 @@ recomputed or re-signed.
   opens Transacciones with `categoryId` (with descendants, C0 `TxQuery.categoryId`) and the
   cell's month (`/transactions?categoryId=…&month=YYYY-MM`); a day cell uses `day=YYYY-MM-DD`.
   The transactions page turns `month` into `from`/`to` through the one period helper
-  (MASTER §5.4, **pending Q-m2-design-system-2**). `aria-label` "Ver movimientos de
-  {categoría}, {mes}". In year mode every month cell drills down the same way.
+  (MASTER §5.4, X-17). `aria-label` "Ver movimientos de {categoría}, {mes}". In year mode
+  every month cell drills down the same way, and the Total cell with `year=YYYY` (Jan 1 – Dec
+  31).
 - **Credits (shared)** — in an **expense** row (`category.kind = "expense"`), an actual whose
   `minor` is negative (refunds larger than spending) renders its `display` in `success`, with a
   visually hidden " (crédito)" and the tooltip "Las devoluciones superaron los gastos". In an
