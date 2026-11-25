@@ -198,9 +198,16 @@ Focus ring always visible: `ring-[3px] ring-ring/50` (Tailwind `focus-visible:`)
   siguiente"). Clicking the label returns to the current period. The period is kept per
   window while moving between these pages.
 - **Page header row** (44px): page title (§3) on the left, the page's controls after it,
-  the page's single primary button last.
-- **Shared page rules** (matrix, calendar and dashboard pages in `pages/`): the excluded-
-  currency notice (DEC-29 Q8) and credits are specified once in `pages/budget.md` and reused.
+  the page's single primary button last (if it has one). This row *is* the toolbar of §5's
+  sketch: no page has a second toolbar, stepper or primary above it.
+- **Period helper** (**proposed, pending Q-m2-design-system-2**): one module,
+  `src/lib/period.ts`, holds the only calendar arithmetic in TS — previous/next month or year,
+  a month's first and last civil day, "the 12 months ending with m" — and the only percent
+  presentation (basis points → "12,7 %" in the UI language, `null` → "—"). It never touches
+  money. Every page uses it instead of its own date or percent code.
+- **Shared page rules** (matrix, calendar and dashboard pages in `pages/`): row semantics,
+  sticky rules, section rows, drill-down, credits and the excluded-currency notice
+  (DEC-29 Q8) are specified once in `pages/budget.md` and reused.
 
 ## 6. Motion
 
@@ -252,6 +259,8 @@ Lists over 50 rows are virtualized (NFR-05).
   - In a region (sidebar, page) it replaces the content, and the view's primary button is disabled.
   - In a dialog it is the form-level message, and the form stays open with its values.
 - **Errors from an action outside a form** (delete, restore, loading more rows): Sonner `toast.error` with the same per-code text as §7.1's form-level error.
+- **Not yet available from an action outside a form** (an in-cell edit, a copy, a keyboard move answering `NOT_IMPLEMENTED`): Sonner default toast (never `toast.error`) with the `Hourglass` icon and "Aún no disponible" + "Esta función llega en una próxima versión."
+- **Cell error popover** (an in-cell edit answering `VALIDATION`): a popover anchored under the cell (`bg-popover`, border, `shadow-md`, `text-xs`) with `CircleAlert` + the field message in `text-destructive`, `role="alert"`; the input has `aria-invalid` and `aria-describedby` pointing at it. It closes when the edit is committed or cancelled.
 - **Undo toast:** Sonner default toast. The text says what happened ("Transacción eliminada"), with one `Deshacer` action and an 8 s duration.
 
 ## 8. Charts
@@ -259,11 +268,14 @@ Lists over 50 rows are virtualized (NFR-05).
 - Budget vs. actual → bars with target marker. Cash flow → bars above and below zero
   (in/out). Net worth → line.
 - Every chart ships with: a table view of the same series, an `aria-label` summary,
-  visible legend, tooltips reachable by keyboard.
+  visible legend, tooltips reachable by keyboard. Two exemptions: a single-series chart
+  needs no legend (its title names the series), and a chart whose every value is directly
+  labelled in text needs no tooltip and, if it is itself a `<table>`, no separate table view.
 - Series values arrive pre-computed from Rust; the UI renders only. Every number shown
   (tooltip, label, table) is a `display` string; there are no numeric axis tick labels,
-  because they would need number formatting in TS. The chart may read `minor` as a number
-  only to position marks.
+  because they would need number formatting in TS. **Proposed, pending
+  Q-m2-design-system-2:** the chart may read `minor` as a JS number and negate outflows only
+  to position marks, leaving scaling to the charting library; nothing shown is derived from it.
 - Marks: bars 4px radius on the data end, anchored to the baseline; 2px `card` gap between
   stacked segments; lines 2px; markers 8px with a 2px `card` ring; gridlines `border`,
   horizontal only. Legend and labels use text tokens (`foreground`, `muted-foreground`),
@@ -299,11 +311,27 @@ CVD simulated with Machado 2009):
 | Protan/deutan ΔE, worst pair (all pairs) | 6.0 (1↔3) | 6.0 (1↔3) |
 | ΔE to nearest reserved color | 16.0 (`chart-1`↔`success`, `chart-3`↔`destructive`) | 18.6 (`chart-3`↔`destructive`) |
 
-Every mark is ≥ 3:1 against both surfaces (WCAG 1.4.11). The 1↔3 pair sits in the
+Every mark is ≥ 3:1 against `card`, `background` and `popover` (WCAG 1.4.11). Marks are never
+drawn on a `muted` fill (dark `chart-3` on `muted` is 2.98:1). The 1↔3 pair sits in the
 colorblind floor band (6–8), so **identity is never color alone**: a visible legend on
 every multi-series chart, position (in the cash-flow chart income is above zero and saving
-below), the table view, and tooltips. `apps/desktop/src/chart-palette.test.ts` keeps the
-contrast and the no-reuse rule true; re-measure and update this table when a value changes.
+below), the table view, and tooltips.
+
+`chart-2` is near `scope-personal` in hue (ΔE 10.4 light / 9.0 dark); that is accepted
+because scope colors appear only in badges with an icon and a label, and a chart series never
+carries scope meaning.
+
+Use in code: chart configs reference the tokens as `color: "var(--chart-N)"`, never the
+`theme: {light, dark}` form of `components/ui/chart.tsx` (its `.dark` selector never matches;
+the app's dark mode is `prefers-color-scheme`). Tailwind utilities are `fill-chart-N`,
+`bg-chart-N`.
+
+**What guards it.** `apps/desktop/src/chart-palette.test.ts` fails when a chart token is
+missing in either mode, is not `#rrggbb`, is below 3:1 on `card`/`background`/`popover`, equals
+any status, brand, primary or scope color, is within OKLab ΔE 15 of a status or brand color or
+of another series, or is not mapped in `@theme`. The colorblind (protan/deutan) figures above
+were measured once with the dataviz palette validator; re-measure and update this table when a
+value changes.
 
 ---
 
