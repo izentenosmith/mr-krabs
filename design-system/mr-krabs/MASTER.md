@@ -60,6 +60,7 @@ mode (lowest: warning on white, 5.0:1). Re-check when adding a token.
 | Transfer between own accounts | `muted-foreground`, `⇄` icon, no sign — never styled as spending (FR-TX-02) |
 | Over budget | `destructive` + alert icon + "excedido" text |
 | Out-of-range bill | `warning` + alert icon + "Fuera de rango" |
+| Report grids and tiles (M2) | `foreground` for every amount, `display` as received: the row's section or the tile's caption names the kind, so income is not `success` there. A credit (an expense category's negative actual) adds a visible `text-xs text-muted-foreground` "crédito" (`pages/budget.md`). |
 
 ### Status & scope badges (icon + label, always)
 
@@ -131,7 +132,9 @@ Minimum 12px anywhere. Body is 14px — between macOS native (13) and the web mi
 - Lens switcher (FR-HH-03) is a `ToggleGroup` at the top of the sidebar; the active lens
   persists per window.
 - Active nav item: `accent` fill + 3px `brand` left marker + 500 weight.
-- One primary button per view (`+ Nuevo` in the toolbar). Others are `outline`/`ghost`.
+- At most one primary button per view, last in its page header row (§5.4; the toolbar in
+  the sketch above is that row). Transacciones' is "Nuevo"; some views have none. Others are
+  `outline`/`ghost`.
 - Destructive actions live in menus or dialogs, never next to the primary button.
 
 ### Keyboard (NFR-11)
@@ -141,7 +144,7 @@ Minimum 12px anywhere. Body is 14px — between macOS native (13) and the web mi
 | ⌘K | Command palette |
 | ⌘N | New transaction |
 | ⌘1 / ⌘2 / ⌘3 | Lens: Personal / Household / Combined |
-| ⌘F | Focus search |
+| ⌘F | Focus search (on views that have one) |
 | ↑ ↓ / Enter / Esc | Move in tables / open / close |
 | ⌘Z | Undo last delete or import (FR-TX-08, FR-IM-05) |
 
@@ -152,7 +155,7 @@ Focus ring always visible: `ring-[3px] ring-ring/50` (Tailwind `focus-visible:`)
 ### 5.1 Accounts sidebar
 - Section header "Cuentas" (`text-xs font-medium text-muted-foreground`) with a ghost icon
   button `Plus` (`aria-label` "Nueva cuenta"). Not a primary button (the view's primary is
-  the toolbar's "+ Nuevo").
+  Transacciones' "Nuevo", §5).
 - Accounts are grouped by kind, in this order, empty groups hidden; group caption `text-xs
   text-muted-foreground`:
   1. Bancos y efectivo — checking, cuenta_vista, savings, cash
@@ -195,8 +198,13 @@ Focus ring always visible: `ring-[3px] ring-ring/50` (Tailwind `focus-visible:`)
   ghost icon button `ChevronLeft` ("Mes anterior" / "Año anterior"), the period label as a
   ghost button (`text-sm font-medium`, min-width 144px, centered; month name and year in
   the UI language, e.g. "Noviembre 2026"), and `ChevronRight` ("Mes siguiente" / "Año
-  siguiente"). Clicking the label returns to the current period. The period is kept per
-  window while moving between these pages.
+  siguiente"). The label button's accessible name is "Ir al período actual ({período})"; it
+  is disabled while the current period is shown. A visually hidden `aria-live="polite"`
+  region announces the new period after every step. Month and weekday names come from the
+  i18n catalogue (es-CL and en), never from hand-written formatting.
+- **Shared period:** one month, kept per window across Presupuesto, Calendario and Resumen.
+  A year view (Presupuesto's "Año") shows that month's year and steps it by a year, keeping
+  the month number.
 - **Page header row** (44px): page title (§3) on the left, the page's controls after it,
   the page's single primary button last (if it has one). This row *is* the toolbar of §5's
   sketch: no page has a second toolbar, stepper or primary above it.
@@ -260,7 +268,7 @@ Lists over 50 rows are virtualized (NFR-05).
   - In a dialog it is the form-level message, and the form stays open with its values.
 - **Errors from an action outside a form** (delete, restore, loading more rows): Sonner `toast.error` with the same per-code text as §7.1's form-level error.
 - **Not yet available from an action outside a form** (an in-cell edit, a copy, a keyboard move answering `NOT_IMPLEMENTED`): Sonner default toast (never `toast.error`) with the `Hourglass` icon and "Aún no disponible" + "Esta función llega en una próxima versión."
-- **Cell error popover** (an in-cell edit answering `VALIDATION`): a popover anchored under the cell (`bg-popover`, border, `shadow-md`, `text-xs`) with `CircleAlert` + the field message in `text-destructive`, `role="alert"`; the input has `aria-invalid` and `aria-describedby` pointing at it. It closes when the edit is committed or cancelled.
+- **Cell error popover** (an in-cell edit answering `VALIDATION`): a popover anchored under the cell (`bg-popover`, border, `shadow-md`, `text-xs`) with `CircleAlert` + the field message in `text-destructive`. It never takes focus (the input keeps it) and is announced once through `role="alert"`; the input has `aria-invalid` (no `aria-describedby`, which would announce it twice). It closes when the edit is committed, cancelled, or its text changes.
 - **Undo toast:** Sonner default toast. The text says what happened ("Transacción eliminada"), with one `Deshacer` action and an 8 s duration.
 
 ## 8. Charts
@@ -278,8 +286,9 @@ Lists over 50 rows are virtualized (NFR-05).
   an opaque coordinate and does nothing else with it.
 - Marks: bars 4px radius on the data end, anchored to the baseline; 2px `card` gap between
   stacked segments; lines 2px; markers 8px with a 2px `card` ring; gridlines `border`,
-  horizontal only. Legend and labels use text tokens (`foreground`, `muted-foreground`),
-  never the series color.
+  horizontal only, plus at most one 1px dashed `muted-foreground` vertical guide marking the
+  focused point. Legend and labels use text tokens (`foreground`, `muted-foreground`), never
+  the series color.
 - **No dual axes.** Two measures of different scale are two charts.
 
 ### 8.1 Chart palette
@@ -288,7 +297,7 @@ Categorical series take `chart-1`, `chart-2`, `chart-3` **in this order**, and a
 keeps its color wherever it appears (color follows the entity, never its rank). These are
 **marks only, never text**. A chart needs at most three colored series; a fourth becomes a
 different mark (a `foreground` line, as Flujo libre), a facet, or folds into "Otros" drawn
-in `muted-foreground`. A single-series chart uses the color of the entity it shows (for
+in `muted-foreground` — an "Otros" value Rust computes, never one summed in TS. A single-series chart uses the color of the entity it shows (for
 example `chart-2` for spending).
 
 | Token | Light | Dark | Hue |

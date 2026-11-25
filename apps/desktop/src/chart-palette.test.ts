@@ -7,7 +7,8 @@ import { join } from "node:path";
  * Colors only — no money is computed here.
  */
 
-const css = readFileSync(join(import.meta.dirname, "index.css"), "utf8");
+/** index.css with comments removed: a commented-out declaration is not a declaration. */
+const css = readFileSync(join(import.meta.dirname, "index.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
 
 const series = ["chart-1", "chart-2", "chart-3"];
 const surfaces = ["card", "background", "popover"];
@@ -38,7 +39,7 @@ function declarations(block: string): Tokens {
 function section(start: string, end: string): string {
   const from = css.indexOf(start);
   const to = css.indexOf(end, from);
-  if (from < 0 || to < 0) throw new Error(`index.css: block "${start}" not found`);
+  if (from < 0 || to < 0) throw new Error(`index.css: no block from "${start}" to "${end}"`);
   return css.slice(from, to);
 }
 
@@ -47,7 +48,9 @@ const darkStart = css.indexOf("@media (prefers-color-scheme: dark)");
 const themeStart = css.indexOf("@theme inline");
 
 const lightOwn = declarations(section(":root {", "}"));
-const darkOwn = declarations(section("@media (prefers-color-scheme: dark)", "@theme inline"));
+const darkOwn = declarations(
+  section("@media (prefers-color-scheme: dark)", "@theme inline").replace(/^[^{]*\{[^{]*\{/, "").split("}")[0] ?? "",
+);
 const theme = declarations(section("@theme inline", "@layer base"));
 const light = lightOwn;
 const dark = { ...lightOwn, ...darkOwn };
@@ -106,6 +109,11 @@ describe("index.css structure", () => {
 
   it.each([...series, ...surfaces])("defines --%s in the dark block itself", (name) => {
     expect(darkOwn[name]).toBeDefined();
+  });
+
+  it("defines no chart token beyond chart-1..3", () => {
+    const names = Object.keys({ ...lightOwn, ...darkOwn }).filter((n) => /^chart-\d+$/.test(n));
+    expect(names.sort()).toEqual(series);
   });
 
   it.each(series)("maps --color-%s to var(--%s) in @theme", (name) => {
