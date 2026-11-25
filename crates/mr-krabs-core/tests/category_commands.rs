@@ -518,6 +518,22 @@ fn req18_archived_category_keeps_existing_entries_valid_and_refuses_new_ones() {
     let mut input = expense(&account, &sup);
     input["description"] = json!("Otra");
     env.ok("tx_update", json!({ "id": id, "input": input }));
+    // Fixing the amount keeps the archived category; moving it into one is refused.
+    let mut input = expense(&account, &sup);
+    input["amount"] = json!({ "amount": "2.000", "currency": "CLP" });
+    env.ok("tx_update", json!({ "id": id, "input": input }));
+    let e = env
+        .call(
+            "tx_update",
+            json!({ "id": id, "input": expense(&account, &seed_id("expense.food.delivery")) }),
+        )
+        .unwrap_err();
+    field(
+        &e,
+        ErrorCode::Validation,
+        "categoryId",
+        "errors.field.archived",
+    );
     // Creating or moving under an archived group is refused.
     let e = env
         .app
