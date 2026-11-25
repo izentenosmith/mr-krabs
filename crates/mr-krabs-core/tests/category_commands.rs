@@ -660,3 +660,33 @@ fn req19_merge_moves_postings_and_sums_colliding_budget_lines() {
     );
     assert!(find(&env.tree(), &sup).is_none());
 }
+
+/// Behaviour change (X-16, `sibling_key`): with no kind filter, income roots come before
+/// expense roots, and siblings with the same sort order are ordered by accent-insensitive name.
+#[test]
+fn category_tree_orders_siblings_by_kind_sort_order_then_normalized_name() {
+    let mut env = Env::new("order");
+    let tree = env.tree();
+    let first_expense = tree
+        .iter()
+        .position(|r| r.kind == CategoryKind::Expense)
+        .unwrap();
+    assert!(
+        tree[..first_expense]
+            .iter()
+            .all(|r| r.kind == CategoryKind::Income)
+    );
+    assert!(
+        tree[first_expense..]
+            .iter()
+            .all(|r| r.kind == CategoryKind::Expense)
+    );
+
+    let parent = env.create(CategoryKind::Expense, None, "Orden");
+    let zeta = env.create(CategoryKind::Expense, Some(&parent), "Zeta");
+    let alamo = env.create(CategoryKind::Expense, Some(&parent), "Álamo");
+    env.exec(&format!(
+        "UPDATE category SET sort_order = 0 WHERE id IN ('{zeta}', '{alamo}')"
+    ));
+    assert_eq!(env.child_ids(&parent), [alamo, zeta]);
+}
