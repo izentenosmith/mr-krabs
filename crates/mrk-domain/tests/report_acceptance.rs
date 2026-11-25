@@ -793,32 +793,137 @@ proptest! {
     }
 }
 
-/// Criterion 13 (edge): categories in a parent cycle or under an unknown parent are left out.
+/// Criterion 13 (edge, X-16): nothing live is hidden — a category under an unknown parent or
+/// on a parent cycle becomes a root (a cycle broken at its smallest member) and counts.
 #[test]
-fn categories_in_a_cycle_or_under_unknown_parent_are_left_out() {
+fn categories_under_unknown_parent_or_on_a_cycle_become_roots() {
     let mut b = book();
     b.data.categories.extend([
-        cat("a", Some("b"), CategoryKind::Expense, 0, "A"),
         cat("b", Some("a"), CategoryKind::Expense, 0, "B"),
+        cat("a", Some("b"), CategoryKind::Expense, 0, "A"),
         cat("x", Some("ghost"), CategoryKind::Expense, 0, "X"),
         cat("self", Some("self"), CategoryKind::Expense, 0, "Self"),
     ]);
     b.expense("2026-01-01", "chk", "a", clp(10))
+        .expense("2026-01-01", "chk", "b", clp(7))
         .expense("2026-01-01", "chk", "x", clp(20))
         .expense("2026-01-01", "chk", "self", clp(40))
         .expense("2026-01-01", "chk", "housing", clp(5));
     let v = viewer(View::Household);
     let m = budget_matrix(&b.data, &v, 2026).unwrap();
-    let ids: Vec<&str> = m.rows.iter().map(|r| r.category.id.as_str()).collect();
+    let shape: Vec<(&str, u32, Option<&str>)> = m
+        .rows
+        .iter()
+        .map(|r| {
+            (
+                r.category.id.as_str(),
+                r.category.depth,
+                r.category.parent_id.as_deref(),
+            )
+        })
+        .collect();
     assert_eq!(
-        ids,
-        ["salary", "food", "super", "organic", "delivery", "housing"]
+        shape,
+        [
+            ("salary", 0, None),
+            ("a", 0, None),
+            ("b", 1, Some("a")),
+            ("self", 0, None),
+            ("x", 0, None),
+            ("food", 0, None),
+            ("super", 1, Some("food")),
+            ("organic", 2, Some("super")),
+            ("delivery", 1, Some("food")),
+            ("housing", 0, None),
+        ]
     );
-    assert_eq!(m.months[0].expense.actual, clp(5));
+    assert_eq!(row(&m, "a").months[0].actual, clp(17));
+    assert_eq!(m.months[0].expense.actual, clp(82));
     let cal = month_calendar(&b.data, &v, "2026-01").unwrap();
-    assert_eq!(cal.expense_total, clp(5));
+    assert_eq!(cal.expense_total, clp(82));
     let s = spending(&b.data, &v, "2026-01-01", "2026-01-31").unwrap();
-    assert_eq!(s.total, clp(5));
+    assert_eq!(s.total, clp(82));
+}
+
+#[derive(Clone, Debug)]
+enum Parent {
+    Root,
+    Ghost,
+    Node(prop::sample::Index),
+}
+
+fn parent() -> impl Strategy<Value = Parent> {
+    prop_oneof![
+        Just(Parent::Root),
+        Just(Parent::Ghost),
+        any::<prop::sample::Index>().prop_map(Parent::Node),
+    ]
+}
+
+proptest! {
+    /// Criterion 13 (X-16): over any same-kind parent links — orphans, self-parents, cycles — every
+    /// category is a row exactly once, below its row's parent, and Σ root rows equals Σ all
+    /// base-currency category legs in view.
+    #[test]
+    fn roots_sum_all_category_legs_in_view(
+        links in proptest::collection::vec((parent(), any::<bool>()), 1..10),
+        legs in proptest::collection::vec(
+            (any::<prop::sample::Index>(), 0usize..3, 1u32..=12, -1_000_000i64..1_000_000), 0..30),
+    ) {
+        let n = links.len();
+        let kind = |income: bool| if income { CategoryKind::Income } else { CategoryKind::Expense };
+        let mut b = book();
+        b.data.categories = links
+            .iter()
+            .enumerate()
+            .map(|(i, (p, income))| {
+                let parent = match p {
+                    Parent::Root => None,
+                    Parent::Ghost => Some("ghost".to_owned()),
+                    // The schema's composite FK keeps a parent of the child's own kind.
+                    Parent::Node(j) => {
+                        let same: Vec<usize> =
+                            (0..n).filter(|k| links[*k].1 == *income).collect();
+                        Some(format!("c{}", same[j.index(same.len())]))
+                    }
+                };
+                cat(&format!("c{i}"), parent.as_deref(), kind(*income), (i % 3) as i64, "n")
+            })
+            .collect();
+        let (mut expense_legs, mut income_legs) = (0i64, 0i64);
+        for (c, account, month, amount) in &legs {
+            let i = c.index(n);
+            let account = ["chk", "mychk", "other"][*account];
+            b.expense(&date(*month, 1), account, &format!("c{i}"), clp(*amount));
+            if account == "chk" {
+                if links[i].1 { income_legs += amount } else { expense_legs += amount }
+            }
+        }
+        let v = viewer(View::Household);
+        let m = budget_matrix(&b.data, &v, 2026).unwrap();
+        let mut ids: Vec<&str> = m.rows.iter().map(|r| r.category.id.as_str()).collect();
+        ids.sort_unstable();
+        let mut want: Vec<String> = (0..n).map(|i| format!("c{i}")).collect();
+        want.sort_unstable();
+        prop_assert_eq!(ids, want.iter().map(String::as_str).collect::<Vec<_>>());
+        for (i, r) in m.rows.iter().enumerate() {
+            match r.category.parent_id.as_deref() {
+                None => prop_assert_eq!(r.category.depth, 0),
+                Some(p) => {
+                    let at = m.rows[..i].iter().position(|q| q.category.id == p);
+                    prop_assert!(at.is_some(), "parent {} after {}", p, r.category.id);
+                    prop_assert_eq!(r.category.depth, m.rows[at.unwrap()].category.depth + 1);
+                }
+            }
+        }
+        let roots = |k| m.rows.iter()
+            .filter(|r| r.category.depth == 0 && r.category.kind == k)
+            .map(|r| r.year_total.actual.minor).sum::<i64>();
+        prop_assert_eq!(roots(CategoryKind::Expense), expense_legs);
+        prop_assert_eq!(roots(CategoryKind::Income), -income_legs);
+        let s = spending(&b.data, &v, "2026-01-01", "2026-12-31").unwrap();
+        prop_assert_eq!(s.total.minor, expense_legs);
+    }
 }
 
 /// Criterion 14 (edge): no rate without positive income, no shares without positive spending.

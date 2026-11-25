@@ -23,9 +23,10 @@ pub struct TreeRow {
 /// The live category tree in display order: depth-first, siblings (and roots) ordered by
 /// kind (income first), `sort_order`, accent-insensitive name, then id.
 ///
-/// Only categories reachable from a root are in the tree: one whose parent is unknown or that
-/// sits in a parent cycle (possible only through a sync conflict, M1 #29 F3) is left out,
-/// along with everything below it.
+/// Nothing live is hidden (X-16): a category whose parent is unknown (not among the live
+/// rows) is a root, and a parent cycle — possible only through a sync conflict, M1 #29 F3 —
+/// is broken by making its smallest member in sibling order a root. `TreeRow::parent_id` is
+/// the parent as placed, so it is `None` for every root.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CategoryTree {
     rows: Vec<TreeRow>,
@@ -39,31 +40,27 @@ impl CategoryTree {
         for c in categories {
             by_id.entry(c.id.as_str()).or_insert(c);
         }
+        let parents = effective_parents(&by_id);
         let mut children: BTreeMap<Option<&str>, Vec<&ReportCategory>> = BTreeMap::new();
         for c in by_id.values() {
-            children.entry(c.parent_id.as_deref()).or_default().push(c);
+            children.entry(parents[c.id.as_str()]).or_default().push(c);
         }
-        let key =
-            |c: &&ReportCategory| (c.kind, c.sort_order, normalize_name(&c.name), c.id.clone());
         for list in children.values_mut() {
-            list.sort_by_cached_key(key);
+            list.sort_by_cached_key(sibling_key);
         }
 
         let mut rows = Vec::with_capacity(by_id.len());
-        let mut seen = BTreeSet::new();
         // Depth-first, pre-order: push children in reverse so the first is popped first.
+        // Effective parents form a forest, so every category is reached exactly once.
         let mut stack: Vec<(&ReportCategory, u32)> = children
             .get(&None)
             .map(|roots| roots.iter().rev().map(|c| (*c, 0)).collect())
             .unwrap_or_default();
         while let Some((c, depth)) = stack.pop() {
-            if !seen.insert(c.id.as_str()) {
-                continue;
-            }
             let kids = children.get(&Some(c.id.as_str()));
             rows.push(TreeRow {
                 id: c.id.clone(),
-                parent_id: c.parent_id.clone(),
+                parent_id: parents[c.id.as_str()].map(str::to_owned),
                 depth,
                 kind: c.kind,
                 name: c.name.clone(),
@@ -122,4 +119,54 @@ impl CategoryTree {
             .map(|(r, t)| (r.id.clone(), t))
             .collect())
     }
+}
+
+/// How siblings (and roots) are ordered.
+fn sibling_key(c: &&ReportCategory) -> (CategoryKind, i64, String, String) {
+    (c.kind, c.sort_order, normalize_name(&c.name), c.id.clone())
+}
+
+/// Each category's parent as placed in the tree: its own parent when that is live and does not
+/// close a cycle, else `None`. A cycle is cut at its smallest member by `sibling_key`, so the
+/// result is the same whatever order the rows came in.
+fn effective_parents<'a>(
+    by_id: &BTreeMap<&'a str, &'a ReportCategory>,
+) -> BTreeMap<&'a str, Option<&'a str>> {
+    let mut parents: BTreeMap<&str, Option<&str>> = by_id
+        .iter()
+        .map(|(id, c)| {
+            (
+                *id,
+                c.parent_id.as_deref().filter(|p| by_id.contains_key(p)),
+            )
+        })
+        .collect();
+    // Settled: known to reach a root. Walk up from each unsettled category; a walk either
+    // reaches a settled category or a root (settle the path), or comes back on itself (a
+    // cycle: cut it at its smallest member, then settle the path).
+    let mut settled: BTreeSet<&str> = BTreeSet::new();
+    for &start in by_id.keys() {
+        let mut path: Vec<&str> = Vec::new();
+        let mut on_path: BTreeSet<&str> = BTreeSet::new();
+        let mut cur = Some(start);
+        while let Some(id) = cur {
+            if settled.contains(id) {
+                break;
+            }
+            if !on_path.insert(id) {
+                let at = path.iter().position(|p| *p == id).unwrap_or(0);
+                let cut = path[at..]
+                    .iter()
+                    .copied()
+                    .min_by_key(|m| sibling_key(&by_id[m]))
+                    .unwrap_or(id);
+                parents.insert(cut, None);
+                break;
+            }
+            path.push(id);
+            cur = parents[id];
+        }
+        settled.extend(path);
+    }
+    parents
 }
