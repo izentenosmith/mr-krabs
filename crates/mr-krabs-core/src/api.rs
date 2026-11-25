@@ -10,7 +10,7 @@
 use std::collections::BTreeMap;
 use std::fmt::Display;
 
-use mrk_money::Money;
+use mrk_money::{Money, format_es_cl};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
@@ -458,8 +458,29 @@ pub struct BudgetCopyInput {
 // and positive in the row's own direction (spent for expense, received for income); transfers
 // are never income or expense (DEC-29 Q7). A group row's amounts are its own plus all its
 // descendants' (roll-up, DEC-30 Q9). Rows are in category-tree order (depth-first, siblings
-// by sort order), archived categories included. Percentages are integer basis points
-// (10000 = 100 %), never floats.
+// by sort order, name, id; X-16), archived categories included, unless a report says
+// otherwise. Everything the UI shows arrives ready from Rust (X-17, CLAUDE.md rule 5): money
+// as `MoneyDto`, percentages as `PercentDto`, and chart coordinates as signed `plot` values.
+
+/// A percentage: integer basis points (10000 = 100 %, never a float) and its es-CL text
+/// with one decimal, e.g. `"12,7 %"` (half away from zero, no-break space before `%`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct PercentDto {
+    pub bp: i32,
+    pub display: String,
+}
+
+impl PercentDto {
+    pub fn from_bp(bp: i32) -> Self {
+        let bp_wide = i64::from(bp);
+        let tenths = (bp_wide + bp_wide.signum() * 5) / 10;
+        Self {
+            bp,
+            display: format!("{}\u{a0}%", format_es_cl(tenths, 1, "")),
+        }
+    }
+}
 
 /// Postings left out of a report because they are not in the base currency.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
@@ -484,7 +505,7 @@ pub struct ReportCategoryDto {
     pub is_group: bool,
 }
 
-/// Planned vs actual for one month; `diff` = planned − actual.
+/// Planned vs actual for one period; `diff` = planned − actual.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct PlanActualDto {
@@ -502,26 +523,36 @@ pub struct BudgetMatrixQuery {
     pub view: View,
 }
 
-/// One category row of the matrix: 12 months, January first.
+/// One category row of the matrix: 12 months, January first, and the year's total.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct BudgetMatrixRowDto {
     pub category: ReportCategoryDto,
     /// Planned (rolled up), actual (rolled up) and diff, per month.
     pub months: Vec<PlanActualDto>,
+    /// The sum of `months`.
+    pub year: PlanActualDto,
     /// This category's own planned line per month (no descendants), for in-cell editing.
     pub own_planned: Vec<MoneyDto>,
 }
 
-/// The matrix's summary rows, 12 months each, January first.
+/// One summary row of the matrix: 12 months, January first, and the year's total.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct BudgetSummaryRowDto {
+    pub months: Vec<PlanActualDto>,
+    /// The sum of `months`.
+    pub year: PlanActualDto,
+}
+
+/// The matrix's summary rows. The expense row's actual is the page's "Total gastos".
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct BudgetMatrixSummaryDto {
-    pub income: Vec<PlanActualDto>,
-    pub expense: Vec<PlanActualDto>,
-    pub saved: Vec<PlanActualDto>,
-    pub free_cash_flow: Vec<PlanActualDto>,
-    pub total_expenses: Vec<PlanActualDto>,
+    pub income: BudgetSummaryRowDto,
+    pub expense: BudgetSummaryRowDto,
+    pub saved: BudgetSummaryRowDto,
+    pub free_cash_flow: BudgetSummaryRowDto,
 }
 
 /// `budget_matrix`: a year of plan vs real (FR-BU-08).
@@ -584,7 +615,20 @@ pub struct CashFlowQuery {
     pub view: View,
 }
 
-/// One month of cash flow: free cash flow = income − expense − saved (DEC-29 Q7).
+/// A month's cash-flow lines as chart coordinates: signed, inflows positive and outflows
+/// (expense, saved) negative, so bars below zero need no arithmetic in the UI. Only the
+/// sign differs from the display amounts; `freeCashFlow` keeps its own sign.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CashFlowPlotDto {
+    pub income: MoneyDto,
+    pub expense: MoneyDto,
+    pub saved: MoneyDto,
+    pub free_cash_flow: MoneyDto,
+}
+
+/// One month of cash flow: free cash flow = income − expense − saved (DEC-29 Q7). The
+/// amounts are for display, each positive in its own direction; `plot` is for charts.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct CashFlowMonthDto {
@@ -594,9 +638,10 @@ pub struct CashFlowMonthDto {
     pub expense: MoneyDto,
     pub saved: MoneyDto,
     pub free_cash_flow: MoneyDto,
-    /// saved ÷ income in basis points; `null` when income is 0. Clamped to the `i32`
-    /// range (an extreme ratio is reported at the bound, never wrapped).
-    pub savings_rate_bp: Option<i32>,
+    pub plot: CashFlowPlotDto,
+    /// saved ÷ income; `null` when income is 0. `bp` is clamped to the `i32` range (an
+    /// extreme ratio is reported at the bound, never wrapped).
+    pub savings_rate: Option<PercentDto>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
@@ -623,11 +668,16 @@ pub struct SpendingQuery {
 #[serde(rename_all = "camelCase")]
 pub struct BreakdownRowDto {
     pub category: ReportCategoryDto,
+    /// Spent, positive (net of refunds), for display.
     pub amount: MoneyDto,
-    /// Basis points of `total`; `null` when `total` is 0.
-    pub share_bp: Option<i32>,
+    /// `amount` as a chart coordinate: an outflow, so negative (`-amount`).
+    pub plot: MoneyDto,
+    /// Share of `total`; `null` when `total` is 0. `bp` is clamped to the `i32` range.
+    pub share: Option<PercentDto>,
 }
 
+/// `report_spending`. Rows are depth-first, but siblings come **largest `amount` first**,
+/// ties by the tree's sibling order (sort order, name, id; X-16).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct BreakdownDto {
@@ -1220,105 +1270,102 @@ mod tests {
         "#);
     }
 
-    #[test]
-    fn budget_matrix_wire_shape() {
-        let cell = PlanActualDto {
+    fn m(minor: &str, display: &str) -> serde_json::Value {
+        json!({ "minor": minor, "currency": "CLP", "display": display })
+    }
+
+    fn plan_actual() -> PlanActualDto {
+        PlanActualDto {
             planned: money("150000", "$150.000"),
             actual: money("120000", "$120.000"),
             diff: money("30000", "$30.000"),
+        }
+    }
+
+    fn plan_actual_json() -> serde_json::Value {
+        json!({
+            "planned": m("150000", "$150.000"),
+            "actual": m("120000", "$120.000"),
+            "diff": m("30000", "$30.000")
+        })
+    }
+
+    fn category_json() -> serde_json::Value {
+        json!({
+            "id": "cat-1", "parentId": null, "depth": 0, "kind": "expense",
+            "name": "Alimentación", "isArchived": false, "isGroup": true
+        })
+    }
+
+    #[test]
+    fn percent_display_is_es_cl_with_one_decimal() {
+        let shown = |bp| PercentDto::from_bp(bp).display;
+        assert_eq!(shown(1270), "12,7\u{a0}%");
+        assert_eq!(shown(1275), "12,8\u{a0}%");
+        assert_eq!(shown(1274), "12,7\u{a0}%");
+        assert_eq!(shown(0), "0,0\u{a0}%");
+        assert_eq!(shown(10000), "100,0\u{a0}%");
+        assert_eq!(shown(5), "0,1\u{a0}%");
+        assert_eq!(shown(-1275), "-12,8\u{a0}%");
+        assert_eq!(shown(-4), "0,0\u{a0}%");
+        assert_eq!(shown(1_234_567), "12.345,7\u{a0}%");
+        assert_eq!(shown(i32::MAX), "21.474.836,5\u{a0}%");
+        assert_eq!(shown(i32::MIN), "-21.474.836,5\u{a0}%");
+        assert_eq!(
+            serde_json::to_value(PercentDto::from_bp(1270)).unwrap(),
+            json!({ "bp": 1270, "display": "12,7\u{a0}%" })
+        );
+    }
+
+    #[test]
+    fn budget_matrix_wire_shape() {
+        // One month instead of twelve keeps the expectation readable; the shape is the same.
+        let row = || BudgetSummaryRowDto {
+            months: vec![plan_actual()],
+            year: plan_actual(),
         };
-        // One month instead of twelve keeps the snapshot readable; the shape is the same.
         let dto = BudgetMatrixDto {
             year: 2026,
             view: View::Combined,
             base_currency: "CLP".into(),
             rows: vec![BudgetMatrixRowDto {
                 category: category(),
-                months: vec![cell.clone()],
+                months: vec![plan_actual()],
+                year: plan_actual(),
                 own_planned: vec![money("0", "$0")],
             }],
             summary: BudgetMatrixSummaryDto {
-                income: vec![cell.clone()],
-                expense: vec![cell.clone()],
-                saved: vec![cell.clone()],
-                free_cash_flow: vec![cell.clone()],
-                total_expenses: vec![cell],
+                income: row(),
+                expense: row(),
+                saved: row(),
+                free_cash_flow: row(),
             },
             excluded: vec![ExcludedDto {
                 currency: "USD".into(),
                 count: 2,
             }],
         };
-        let v = serde_json::to_value(&dto).unwrap();
-        insta::assert_json_snapshot!(v["rows"], @r#"
-        [
-          {
-            "category": {
-              "depth": 0,
-              "id": "cat-1",
-              "isArchived": false,
-              "isGroup": true,
-              "kind": "expense",
-              "name": "Alimentación",
-              "parentId": null
-            },
-            "months": [
-              {
-                "actual": {
-                  "currency": "CLP",
-                  "display": "$120.000",
-                  "minor": "120000"
+        let summary_row = json!({ "months": [plan_actual_json()], "year": plan_actual_json() });
+        assert_eq!(
+            serde_json::to_value(&dto).unwrap(),
+            json!({
+                "year": 2026,
+                "view": "combined",
+                "baseCurrency": "CLP",
+                "rows": [{
+                    "category": category_json(),
+                    "months": [plan_actual_json()],
+                    "year": plan_actual_json(),
+                    "ownPlanned": [m("0", "$0")]
+                }],
+                "summary": {
+                    "income": summary_row,
+                    "expense": summary_row,
+                    "saved": summary_row,
+                    "freeCashFlow": summary_row
                 },
-                "diff": {
-                  "currency": "CLP",
-                  "display": "$30.000",
-                  "minor": "30000"
-                },
-                "planned": {
-                  "currency": "CLP",
-                  "display": "$150.000",
-                  "minor": "150000"
-                }
-              }
-            ],
-            "ownPlanned": [
-              {
-                "currency": "CLP",
-                "display": "$0",
-                "minor": "0"
-              }
-            ]
-          }
-        ]
-        "#);
-        let keys = |o: &serde_json::Value| -> Vec<String> {
-            o.as_object().unwrap().keys().cloned().collect()
-        };
-        assert_eq!(
-            keys(&v),
-            [
-                "baseCurrency",
-                "excluded",
-                "rows",
-                "summary",
-                "view",
-                "year"
-            ]
-        );
-        assert_eq!(
-            keys(&v["summary"]),
-            [
-                "expense",
-                "freeCashFlow",
-                "income",
-                "saved",
-                "totalExpenses"
-            ]
-        );
-        assert_eq!(v["excluded"], json!([{ "currency": "USD", "count": 2 }]));
-        assert_eq!(
-            (v["year"].clone(), v["view"].clone()),
-            (json!(2026), json!("combined"))
+                "excluded": [{ "currency": "USD", "count": 2 }]
+            })
         );
     }
 
@@ -1366,42 +1413,69 @@ mod tests {
         let dto = CashFlowDto {
             view: View::Combined,
             base_currency: "CLP".into(),
-            months: vec![CashFlowMonthDto {
-                month: "2026-11".into(),
-                income: money("2000000", "$2.000.000"),
-                expense: money("1500000", "$1.500.000"),
-                saved: money("300000", "$300.000"),
-                free_cash_flow: money("200000", "$200.000"),
-                savings_rate_bp: Some(1500),
-            }],
+            months: vec![
+                CashFlowMonthDto {
+                    month: "2026-11".into(),
+                    income: money("2000000", "$2.000.000"),
+                    expense: money("1500000", "$1.500.000"),
+                    saved: money("300000", "$300.000"),
+                    free_cash_flow: money("200000", "$200.000"),
+                    plot: CashFlowPlotDto {
+                        income: money("2000000", "$2.000.000"),
+                        expense: money("-1500000", "-$1.500.000"),
+                        saved: money("-300000", "-$300.000"),
+                        free_cash_flow: money("200000", "$200.000"),
+                    },
+                    savings_rate: Some(PercentDto::from_bp(1500)),
+                },
+                CashFlowMonthDto {
+                    month: "2026-12".into(),
+                    income: money("0", "$0"),
+                    expense: money("0", "$0"),
+                    saved: money("0", "$0"),
+                    free_cash_flow: money("0", "$0"),
+                    plot: CashFlowPlotDto {
+                        income: money("0", "$0"),
+                        expense: money("0", "$0"),
+                        saved: money("0", "$0"),
+                        free_cash_flow: money("0", "$0"),
+                    },
+                    savings_rate: None,
+                },
+            ],
             excluded: vec![],
         };
-        insta::assert_json_snapshot!(serde_json::to_value(&dto).unwrap()["months"][0], @r#"
-        {
-          "expense": {
-            "currency": "CLP",
-            "display": "$1.500.000",
-            "minor": "1500000"
-          },
-          "freeCashFlow": {
-            "currency": "CLP",
-            "display": "$200.000",
-            "minor": "200000"
-          },
-          "income": {
-            "currency": "CLP",
-            "display": "$2.000.000",
-            "minor": "2000000"
-          },
-          "month": "2026-11",
-          "saved": {
-            "currency": "CLP",
-            "display": "$300.000",
-            "minor": "300000"
-          },
-          "savingsRateBp": 1500
-        }
-        "#);
+        let zero = m("0", "$0");
+        assert_eq!(
+            serde_json::to_value(&dto).unwrap(),
+            json!({
+                "view": "combined",
+                "baseCurrency": "CLP",
+                "months": [
+                    {
+                        "month": "2026-11",
+                        "income": m("2000000", "$2.000.000"),
+                        "expense": m("1500000", "$1.500.000"),
+                        "saved": m("300000", "$300.000"),
+                        "freeCashFlow": m("200000", "$200.000"),
+                        "plot": {
+                            "income": m("2000000", "$2.000.000"),
+                            "expense": m("-1500000", "-$1.500.000"),
+                            "saved": m("-300000", "-$300.000"),
+                            "freeCashFlow": m("200000", "$200.000")
+                        },
+                        "savingsRate": { "bp": 1500, "display": "15,0\u{a0}%" }
+                    },
+                    {
+                        "month": "2026-12",
+                        "income": zero, "expense": zero, "saved": zero, "freeCashFlow": zero,
+                        "plot": { "income": zero, "expense": zero, "saved": zero, "freeCashFlow": zero },
+                        "savingsRate": null
+                    }
+                ],
+                "excluded": []
+            })
+        );
     }
 
     #[test]
@@ -1411,21 +1485,38 @@ mod tests {
             base_currency: "CLP".into(),
             rows: vec![BreakdownRowDto {
                 category: category(),
-                amount: money("0", "$0"),
-                share_bp: None,
+                amount: money("45000", "$45.000"),
+                plot: money("-45000", "-$45.000"),
+                share: Some(PercentDto::from_bp(10000)),
             }],
-            total: money("0", "$0"),
+            total: money("45000", "$45.000"),
             excluded: vec![ExcludedDto {
                 currency: "USD".into(),
                 count: 1,
             }],
         };
-        let v = serde_json::to_value(&dto).unwrap();
-        let keys: Vec<&String> = v.as_object().unwrap().keys().collect();
-        assert_eq!(keys, ["baseCurrency", "excluded", "rows", "total", "view"]);
-        assert_eq!(v["rows"][0]["shareBp"], serde_json::Value::Null);
-        assert_eq!(v["rows"][0]["category"]["isGroup"], true);
-        assert_eq!(v["total"]["minor"], "0");
+        assert_eq!(
+            serde_json::to_value(&dto).unwrap(),
+            json!({
+                "view": "personal",
+                "baseCurrency": "CLP",
+                "rows": [{
+                    "category": category_json(),
+                    "amount": m("45000", "$45.000"),
+                    "plot": m("-45000", "-$45.000"),
+                    "share": { "bp": 10000, "display": "100,0\u{a0}%" }
+                }],
+                "total": m("45000", "$45.000"),
+                "excluded": [{ "currency": "USD", "count": 1 }]
+            })
+        );
+        let empty = BreakdownRowDto {
+            category: category(),
+            amount: money("0", "$0"),
+            plot: money("0", "$0"),
+            share: None,
+        };
+        assert_eq!(serde_json::to_value(empty).unwrap()["share"], json!(null));
     }
 
     #[test]

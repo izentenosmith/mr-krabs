@@ -73,6 +73,10 @@ export type BootstrapDto = {
 	schemaVersion: number,
 };
 
+/**
+ *  `report_spending`. Rows are depth-first, but siblings come **largest `amount` first**,
+ *  ties by the tree's sibling order (sort order, name, id; X-16).
+ */
 export type BreakdownDto = {
 	view: View,
 	baseCurrency: string,
@@ -84,9 +88,12 @@ export type BreakdownDto = {
 /**  One category's spending (rolled up) and its share of `total`. */
 export type BreakdownRowDto = {
 	category: ReportCategoryDto,
+	/**  Spent, positive (net of refunds), for display. */
 	amount: MoneyDto,
-	/**  Basis points of `total`; `null` when `total` is 0. */
-	shareBp: number | null,
+	/**  `amount` as a chart coordinate: an outflow, so negative (`-amount`). */
+	plot: MoneyDto,
+	/**  Share of `total`; `null` when `total` is 0. `bp` is clamped to the `i32` range. */
+	share: PercentDto | null,
 };
 
 /**
@@ -131,22 +138,23 @@ export type BudgetMatrixQuery = {
 	view: View,
 };
 
-/**  One category row of the matrix: 12 months, January first. */
+/**  One category row of the matrix: 12 months, January first, and the year's total. */
 export type BudgetMatrixRowDto = {
 	category: ReportCategoryDto,
 	/**  Planned (rolled up), actual (rolled up) and diff, per month. */
 	months: PlanActualDto[],
+	/**  The sum of `months`. */
+	year: PlanActualDto,
 	/**  This category's own planned line per month (no descendants), for in-cell editing. */
 	ownPlanned: MoneyDto[],
 };
 
-/**  The matrix's summary rows, 12 months each, January first. */
+/**  The matrix's summary rows. The expense row's actual is the page's "Total gastos". */
 export type BudgetMatrixSummaryDto = {
-	income: PlanActualDto[],
-	expense: PlanActualDto[],
-	saved: PlanActualDto[],
-	freeCashFlow: PlanActualDto[],
-	totalExpenses: PlanActualDto[],
+	income: BudgetSummaryRowDto,
+	expense: BudgetSummaryRowDto,
+	saved: BudgetSummaryRowDto,
+	freeCashFlow: BudgetSummaryRowDto,
 };
 
 /**  How installment purchases count against budgets (docs/03). */
@@ -166,6 +174,13 @@ export type BudgetSetInput = {
 	categoryId: string,
 	scope: BudgetScope,
 	amount: string,
+};
+
+/**  One summary row of the matrix: 12 months, January first, and the year's total. */
+export type BudgetSummaryRowDto = {
+	months: PlanActualDto[],
+	/**  The sum of `months`. */
+	year: PlanActualDto,
 };
 
 /**  Per-day totals of the calendar's root rows, by kind (`daysInMonth` entries each). */
@@ -201,7 +216,10 @@ export type CashFlowDto = {
 	excluded: ExcludedDto[],
 };
 
-/**  One month of cash flow: free cash flow = income − expense − saved (DEC-29 Q7). */
+/**
+ *  One month of cash flow: free cash flow = income − expense − saved (DEC-29 Q7). The
+ *  amounts are for display, each positive in its own direction; `plot` is for charts.
+ */
 export type CashFlowMonthDto = {
 	/**  `YYYY-MM`. */
 	month: string,
@@ -209,11 +227,24 @@ export type CashFlowMonthDto = {
 	expense: MoneyDto,
 	saved: MoneyDto,
 	freeCashFlow: MoneyDto,
+	plot: CashFlowPlotDto,
 	/**
-	 *  saved ÷ income in basis points; `null` when income is 0. Clamped to the `i32`
-	 *  range (an extreme ratio is reported at the bound, never wrapped).
+	 *  saved ÷ income; `null` when income is 0. `bp` is clamped to the `i32` range (an
+	 *  extreme ratio is reported at the bound, never wrapped).
 	 */
-	savingsRateBp: number | null,
+	savingsRate: PercentDto | null,
+};
+
+/**
+ *  A month's cash-flow lines as chart coordinates: signed, inflows positive and outflows
+ *  (expense, saved) negative, so bars below zero need no arithmetic in the UI. Only the
+ *  sign differs from the display amounts; `freeCashFlow` keeps its own sign.
+ */
+export type CashFlowPlotDto = {
+	income: MoneyDto,
+	expense: MoneyDto,
+	saved: MoneyDto,
+	freeCashFlow: MoneyDto,
 };
 
 /**  `report_cash_flow`: monthly, `from`..=`to` (both `YYYY-MM`). */
@@ -417,7 +448,16 @@ export type Page<T> = {
 	nextCursor: string | null,
 };
 
-/**  Planned vs actual for one month; `diff` = planned − actual. */
+/**
+ *  A percentage: integer basis points (10000 = 100 %, never a float) and its es-CL text
+ *  with one decimal, e.g. `"12,7 %"` (half away from zero, no-break space before `%`).
+ */
+export type PercentDto = {
+	bp: number,
+	display: string,
+};
+
+/**  Planned vs actual for one period; `diff` = planned − actual. */
 export type PlanActualDto = {
 	planned: MoneyDto,
 	actual: MoneyDto,
