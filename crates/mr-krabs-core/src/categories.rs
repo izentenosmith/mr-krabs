@@ -15,12 +15,12 @@ use mrk_store::{CategoryMergeWrite, CategoryRow};
 
 use crate::api::{CategoryKind, CategoryNodeDto, CategoryTreeQuery};
 use crate::support::{
-    Fields, check_id, command, currency_code, field_error, from_wire, new_id, sort_order, wire,
+    Fields, command, currency_code, field_error, from_wire, new_id, sort_order, wire,
 };
 use crate::{ApiError, App, ErrorCode};
 
 /// Longest category name, in characters (DEC-30 Q10).
-pub(crate) const CATEGORY_NAME_MAX: usize = 80;
+const CATEGORY_NAME_MAX: usize = 80;
 /// Longest icon name, in characters.
 const ICON_MAX: usize = 64;
 
@@ -202,7 +202,6 @@ impl App {
                 }
                 return Ok(self.store.delete_category(id)?);
             };
-            check_id(into)?;
             let lines = self
                 .store
                 .live_budget_lines(&[id, into])?
@@ -270,19 +269,22 @@ pub(crate) fn nodes_of(rows: &[CategoryRow]) -> Result<Vec<CategoryNode>, ApiErr
             Ok(CategoryNode {
                 id: r.id.clone(),
                 parent_id: r.parent_id.clone(),
-                kind: match r.kind.as_str() {
-                    "income" => mrk_domain::CategoryKind::Income,
-                    "expense" => mrk_domain::CategoryKind::Expense,
-                    other => {
-                        return Err(ApiError::internal(format!(
-                            "unknown category kind {other:?}"
-                        )));
-                    }
-                },
+                kind: domain_kind(&r.kind)?,
                 live: !r.deleted,
             })
         })
         .collect()
+}
+
+/// A stored kind code as the domain's kind.
+fn domain_kind(code: &str) -> Result<mrk_domain::CategoryKind, ApiError> {
+    match code {
+        "income" => Ok(mrk_domain::CategoryKind::Income),
+        "expense" => Ok(mrk_domain::CategoryKind::Expense),
+        other => Err(ApiError::internal(format!(
+            "unknown category kind {other:?}"
+        ))),
+    }
 }
 
 fn archived_in_effect(
@@ -346,14 +348,9 @@ fn check_parent(
     let Some(parent) = parent else {
         return Ok(());
     };
-    check_id(parent)
-        .map_err(|e| field_error(ErrorCode::Validation, "parentId", "invalid", e.message))?;
     let nodes = nodes_of(rows)?;
-    let kind = match kind {
-        "income" => mrk_domain::CategoryKind::Income,
-        _ => mrk_domain::CategoryKind::Expense,
-    };
-    validate_parent(&nodes, id, kind, Some(parent)).map_err(|e| category_error("parentId", e))?;
+    validate_parent(&nodes, id, domain_kind(kind)?, Some(parent))
+        .map_err(|e| category_error("parentId", e))?;
     if archived_in_effect(rows, &tree_parents(&nodes), parent) {
         return Err(field_error(
             ErrorCode::Validation,

@@ -216,6 +216,11 @@ fn req15_create_refuses_duplicates_wrong_kind_and_bad_names_writing_nothing() {
         .category_create(CategoryKind::Expense, Some(UNKNOWN), "X", None)
         .unwrap_err();
     field(&e, ErrorCode::NotFound, "parentId", "errors.field.notFound");
+    // A malformed id is just an unknown one.
+    let e = app
+        .category_create(CategoryKind::Expense, Some("nope"), "X", None)
+        .unwrap_err();
+    field(&e, ErrorCode::NotFound, "parentId", "errors.field.notFound");
     let e = app
         .category_create(CategoryKind::Expense, None, "   ", None)
         .unwrap_err();
@@ -573,6 +578,13 @@ fn req19_delete_unused_and_used_needs_a_merge_target() {
         "errors.field.wrongKind",
     );
     let e = env.app.category_delete(&sup, Some(UNKNOWN)).unwrap_err();
+    field(
+        &e,
+        ErrorCode::NotFound,
+        "mergeIntoId",
+        "errors.field.notFound",
+    );
+    let e = env.app.category_delete(&sup, Some("nope")).unwrap_err();
     field(
         &e,
         ErrorCode::NotFound,
