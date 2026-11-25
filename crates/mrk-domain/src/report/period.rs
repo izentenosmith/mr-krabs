@@ -100,7 +100,10 @@ pub(crate) struct DateRange {
 impl DateRange {
     pub fn parse(from: &str, to: &str) -> Result<Self, ReportError> {
         for d in [from, to] {
-            validate_civil_date(d).map_err(|_| ReportError::InvalidDate(d.to_owned()))?;
+            // Civil, and not before 1970: the same floor as years and months (F10).
+            if validate_civil_date(d).is_err() || d < "1970-01-01" {
+                return Err(ReportError::InvalidDate(d.to_owned()));
+            }
         }
         if from > to {
             return Err(ReportError::InvalidRange {

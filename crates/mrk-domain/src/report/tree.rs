@@ -137,7 +137,9 @@ fn effective_parents<'a>(
         .map(|(id, c)| {
             (
                 *id,
-                c.parent_id.as_deref().filter(|p| by_id.contains_key(p)),
+                c.parent_id
+                    .as_deref()
+                    .filter(|p| by_id.get(p).is_some_and(|q| q.kind == c.kind)),
             )
         })
         .collect();

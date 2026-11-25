@@ -1207,3 +1207,198 @@ proptest! {
         let _ = spending(&b.data, &v, "1970-01-01", &t);
     }
 }
+
+// ───────────────────────── remediation slices (tyr-verdict, iteration 1) ─────────────────────────
+
+/// F1: a parent of the other kind is not a parent — the child is a root, nothing panics, and
+/// the matrix's income and expense equal cash flow's.
+#[test]
+fn a_parent_of_the_other_kind_makes_the_category_a_root() {
+    let mut b = book();
+    b.data
+        .categories
+        .push(cat("x", Some("salary"), CategoryKind::Expense, 0, "X"));
+    b.expense("2026-01-02", "chk", "x", clp(50))
+        .expense("2026-01-03", "chk", "housing", clp(100))
+        .income("2026-01-04", "chk", "salary", clp(1_000));
+    let v = viewer(View::Household);
+    let s = spending(&b.data, &v, "2026-01-01", "2026-12-31").unwrap();
+    let x = s.rows.iter().find(|r| r.category.id == "x").unwrap();
+    assert_eq!(
+        (x.category.depth, x.category.parent_id.as_deref()),
+        (0, None)
+    );
+    assert_eq!(s.total, clp(150));
+    let m = budget_matrix(&b.data, &v, 2026).unwrap();
+    let cf = cash_flow(&b.data, &v, "2026-01-01", "2026-12-31").unwrap();
+    assert_eq!(
+        (m.months[0].income.actual, m.months[0].expense.actual),
+        (cf.months[0].flow.income, cf.months[0].flow.expense)
+    );
+    assert_eq!(m.months[0].expense.actual, clp(150));
+    assert_eq!(m.months[0].income.actual, clp(1_000));
+}
+
+/// F2: a transfer touching a saving account in another currency is left out of saved as a
+/// whole (never half-counted) and its entry counted once.
+#[test]
+fn a_transfer_with_a_non_base_saving_leg_is_left_out_whole() {
+    let mut b = book();
+    b.data.accounts.push(ReportAccount {
+        id: "usav".into(),
+        kind: AccountKind::Savings,
+        scope: Scope::Household,
+    });
+    let fx = |from: &str, to: &str| {
+        vec![
+            (Leg::Account(from.into()), clp(-1_000_000)),
+            (Leg::FxTrading, clp(1_000_000)),
+            (Leg::FxTrading, usd(-1_000)),
+            (Leg::Account(to.into()), usd(1_000)),
+        ]
+    };
+    b.entry("2026-01-05", false, fx("sav", "usav"))
+        .entry("2026-01-06", false, fx("chk", "usav"));
+    let cf = cash_flow(
+        &b.data,
+        &viewer(View::Household),
+        "2026-01-01",
+        "2026-01-31",
+    )
+    .unwrap();
+    assert_eq!(cf.total.saved, clp(0));
+    assert_eq!(cf.total.free_cash_flow, clp(0));
+    assert_eq!(
+        cf.excluded,
+        [Excluded {
+            currency: USD,
+            count: 2
+        }]
+    );
+}
+
+/// F3: every report counts a non-base entry once, for the legs it reads.
+#[test]
+fn every_report_counts_a_non_base_entry_once() {
+    let mut b = book();
+    b.expense("2026-03-02", "chk", "super", usd(10))
+        .transfer("2026-03-03", "sav", "inv", usd(5));
+    let v = viewer(View::Household);
+    let one = [Excluded {
+        currency: USD,
+        count: 1,
+    }];
+    assert_eq!(
+        month_calendar(&b.data, &v, "2026-03").unwrap().excluded,
+        one
+    );
+    assert_eq!(
+        spending(&b.data, &v, "2026-03-01", "2026-03-31")
+            .unwrap()
+            .excluded,
+        one
+    );
+    assert_eq!(
+        cash_flow(&b.data, &v, "2026-03-01", "2026-03-31")
+            .unwrap()
+            .excluded,
+        [Excluded {
+            currency: USD,
+            count: 2
+        }]
+    );
+}
+
+/// F5: a cycle is cut at its smallest member by sibling key (here the name), not by id or by
+/// where the walk starts, whatever order the rows come in.
+#[test]
+fn a_cycle_is_cut_by_sibling_key_in_any_order() {
+    let rows = vec![
+        cat("a", Some("b"), CategoryKind::Expense, 0, "Zapatos"),
+        cat("b", Some("a"), CategoryKind::Expense, 0, "Auto"),
+    ];
+    let shape = |cats: &[ReportCategory]| {
+        CategoryTree::new(cats)
+            .rows()
+            .iter()
+            .map(|r| (r.id.clone(), r.depth))
+            .collect::<Vec<_>>()
+    };
+    let want = [("b".to_owned(), 0), ("a".to_owned(), 1)];
+    assert_eq!(shape(&rows), want);
+    let reversed: Vec<_> = rows.into_iter().rev().collect();
+    assert_eq!(shape(&reversed), want);
+}
+
+/// F6: a posting whose stored date is not a civil date is left out, never a panic.
+#[test]
+fn a_posting_with_a_non_civil_date_is_left_out() {
+    let mut b = book();
+    b.expense("2026-03-1", "chk", "super", clp(7))
+        .expense("2026-02-30", "chk", "super", clp(9))
+        .expense("2026-03-05", "chk", "super", clp(5));
+    let v = viewer(View::Household);
+    assert_eq!(
+        month_calendar(&b.data, &v, "2026-03")
+            .unwrap()
+            .expense_total,
+        clp(5)
+    );
+    assert_eq!(
+        month_calendar(&b.data, &v, "2026-02")
+            .unwrap()
+            .expense_total,
+        clp(0)
+    );
+    assert_eq!(
+        cash_flow(&b.data, &v, "2026-01-01", "2026-12-31")
+            .unwrap()
+            .total
+            .expense,
+        clp(5)
+    );
+    assert_eq!(
+        spending(&b.data, &v, "2026-01-01", "2026-12-31")
+            .unwrap()
+            .total,
+        clp(5)
+    );
+    assert_eq!(
+        budget_matrix(&b.data, &v, 2026)
+            .unwrap()
+            .year_total
+            .expense
+            .actual,
+        clp(5)
+    );
+}
+
+/// F7: the matrix for a year ignores budget lines of other years.
+#[test]
+fn the_matrix_ignores_budget_lines_of_other_years() {
+    let mut b = book();
+    b.budget("2025-03", "super", Scope::Household, clp(5_000))
+        .budget("2027-03", "super", Scope::Household, clp(7_000))
+        .budget("2026-03", "super", Scope::Household, clp(1));
+    let m = budget_matrix(&b.data, &viewer(View::Household), 2026).unwrap();
+    assert_eq!(row(&m, "super").months[2].planned, clp(1));
+    assert_eq!(row(&m, "super").year_total.planned, clp(1));
+}
+
+/// F10: date ranges share the 1970 floor of years and months.
+#[test]
+fn ranges_before_1970_are_refused() {
+    let b = book();
+    let v = viewer(View::Household);
+    for from in ["1969-12-31", "0000-01-01"] {
+        assert_eq!(
+            cash_flow(&b.data, &v, from, "2026-01-31"),
+            Err(ReportError::InvalidDate(from.into()))
+        );
+        assert_eq!(
+            spending(&b.data, &v, from, "2026-01-31"),
+            Err(ReportError::InvalidDate(from.into()))
+        );
+    }
+    assert!(cash_flow(&b.data, &v, "1970-01-01", "1970-01-01").is_ok());
+}

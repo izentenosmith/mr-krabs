@@ -104,6 +104,20 @@ pub(crate) fn flows<'a>(
         }
         let transfer = !legs.iter().any(|p| matches!(p.leg, Leg::Category(_)));
         if transfer {
+            // A saving leg in another currency leaves the transfer's saved out as a whole
+            // (never half-counted, F2); its entry is counted in `excluded`.
+            let saving_legs: Vec<&&ReportPosting> = legs
+                .iter()
+                .filter(|p| matches!(&p.leg, Leg::Account(id) if account_in_view(id).is_some_and(|a| a.kind.is_saving())))
+                .collect();
+            if let Some(p) = saving_legs.iter().find(|p| p.amount.currency != data.base) {
+                out.left_out.push(LeftOut {
+                    entry_id: &p.entry_id,
+                    currency: p.amount.currency,
+                    counts: Counts::Saved,
+                });
+                continue;
+            }
             // Saved = the net of the in-view saving-account legs of a transfer: into savings
             // is +, out is −, savings ↔ savings nets to 0, a card payment has none.
             for p in legs {
