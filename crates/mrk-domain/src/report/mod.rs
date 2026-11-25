@@ -40,8 +40,20 @@ pub enum AccountKind {
 
 impl AccountKind {
     /// The kind for a stored `account.kind` code; `None` for an unknown code.
-    pub fn from_code(_code: &str) -> Option<Self> {
-        unimplemented!("R0: AccountKind::from_code")
+    pub fn from_code(code: &str) -> Option<Self> {
+        Some(match code {
+            "checking" => Self::Checking,
+            "savings" => Self::Savings,
+            "cuenta_vista" => Self::CuentaVista,
+            "cash" => Self::Cash,
+            "credit_card" => Self::CreditCard,
+            "loan" => Self::Loan,
+            "mortgage" => Self::Mortgage,
+            "investment" => Self::Investment,
+            "other_asset" => Self::OtherAsset,
+            "other_liability" => Self::OtherLiability,
+            _ => return None,
+        })
     }
 
     /// Savings and investment accounts: money moved into them is "saved" (DEC-29 Q7).
@@ -317,4 +329,39 @@ pub struct Spending {
     pub rows: Vec<SpendingRow>,
     pub total: Money,
     pub excluded: Vec<Excluded>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every `account.kind` code in schema v2 (`account_kind` table) maps to its kind, and back
+    /// through `is_saving` only savings and investment are saving accounts.
+    #[test]
+    fn account_kind_reads_every_stored_code() {
+        let codes = [
+            ("checking", AccountKind::Checking),
+            ("savings", AccountKind::Savings),
+            ("cuenta_vista", AccountKind::CuentaVista),
+            ("cash", AccountKind::Cash),
+            ("credit_card", AccountKind::CreditCard),
+            ("loan", AccountKind::Loan),
+            ("mortgage", AccountKind::Mortgage),
+            ("investment", AccountKind::Investment),
+            ("other_asset", AccountKind::OtherAsset),
+            ("other_liability", AccountKind::OtherLiability),
+        ];
+        for (code, kind) in codes {
+            assert_eq!(AccountKind::from_code(code), Some(kind), "{code}");
+        }
+        let saving: Vec<_> = codes
+            .iter()
+            .filter(|(_, k)| k.is_saving())
+            .map(|(c, _)| *c)
+            .collect();
+        assert_eq!(saving, ["savings", "investment"]);
+        for unknown in ["", "Savings", "brokerage", " savings"] {
+            assert_eq!(AccountKind::from_code(unknown), None, "{unknown:?}");
+        }
+    }
 }
