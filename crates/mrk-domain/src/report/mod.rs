@@ -267,11 +267,21 @@ pub struct MatrixMonth {
     pub free_cash_flow: Money,
 }
 
+/// The summary for the whole year (X-17): what the twelve `MatrixMonth`s add up to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MatrixTotal {
+    pub income: Cell,
+    pub expense: Cell,
+    pub saved: Money,
+    pub free_cash_flow: Money,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BudgetMatrix {
     pub year: i32,
     pub rows: Vec<MatrixRow>,
     pub months: Vec<MatrixMonth>,
+    pub year_total: MatrixTotal,
     pub excluded: Vec<Excluded>,
 }
 

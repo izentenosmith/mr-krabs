@@ -441,6 +441,29 @@ fn saved_counts_net_transfers_into_savings_and_never_opening_balances() {
 }
 
 proptest! {
+    /// X-17: every row's year total and the summary's year total are the sum of the months.
+    #[test]
+    fn matrix_year_totals_are_the_sum_of_the_months(ops in proptest::collection::vec(op(), 0..40)) {
+        let data = data_from(&ops);
+        for view in [View::Household, View::Personal, View::Combined] {
+            let m = budget_matrix(&data, &viewer(view), 2026).unwrap();
+            let sum = |cells: &mut dyn Iterator<Item = Cell>| {
+                cells.fold((0i64, 0i64, 0i64), |t, c| (t.0 + c.planned.minor, t.1 + c.actual.minor, t.2 + c.diff.minor))
+            };
+            let parts = |c: Cell| (c.planned.minor, c.actual.minor, c.diff.minor);
+            for r in &m.rows {
+                prop_assert_eq!(sum(&mut r.months.iter().copied()), parts(r.year_total));
+            }
+            let t = &m.year_total;
+            prop_assert_eq!(sum(&mut m.months.iter().map(|mm| mm.income)), parts(t.income));
+            prop_assert_eq!(sum(&mut m.months.iter().map(|mm| mm.expense)), parts(t.expense));
+            prop_assert_eq!(m.months.iter().map(|mm| mm.saved.minor).sum::<i64>(), t.saved.minor);
+            prop_assert_eq!(m.months.iter().map(|mm| mm.free_cash_flow.minor).sum::<i64>(), t.free_cash_flow.minor);
+        }
+    }
+}
+
+proptest! {
     /// Criterion 6 (REQ-33): diff = planned − actual everywhere; free = income − expense − saved.
     #[test]
     fn free_cash_flow_and_diff_identities(ops in proptest::collection::vec(op(), 0..40)) {
@@ -714,6 +737,66 @@ fn spending_rolls_up_and_shares_sum_to_10000() {
     assert_eq!(s.total, clp(10_000));
 }
 
+/// X-17: siblings (roots too) come largest amount first; ties keep the tree's sibling order.
+#[test]
+fn spending_siblings_are_largest_first() {
+    let mut b = book();
+    b.expense("2026-06-01", "chk", "housing", clp(20_000))
+        .expense("2026-06-02", "chk", "super", clp(1_000))
+        .expense("2026-06-03", "chk", "organic", clp(500))
+        .expense("2026-06-04", "chk", "delivery", clp(3_000));
+    let order = |b: &Book| {
+        spending(
+            &b.data,
+            &viewer(View::Household),
+            "2026-06-01",
+            "2026-06-30",
+        )
+        .unwrap()
+        .rows
+        .iter()
+        .map(|r| r.category.id.clone())
+        .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        order(&b),
+        ["housing", "food", "delivery", "super", "organic"]
+    );
+
+    // A tie: food and housing both 1 000 → sibling key (food's sort order 1 before 2).
+    let mut tie = book();
+    tie.expense("2026-06-01", "chk", "housing", clp(1_000))
+        .expense("2026-06-02", "chk", "delivery", clp(1_000));
+    assert_eq!(
+        order(&tie),
+        ["food", "delivery", "super", "organic", "housing"]
+    );
+}
+
+/// Depth-first with each group's children right after it, and siblings largest amount first.
+fn check_largest_first(s: &Spending) -> Result<(), TestCaseError> {
+    let mut siblings: BTreeMap<Option<&str>, Vec<i64>> = BTreeMap::new();
+    for (i, r) in s.rows.iter().enumerate() {
+        let c = &r.category;
+        let parent = s.rows[..i]
+            .iter()
+            .rev()
+            .find(|q| q.category.depth + 1 == c.depth);
+        match c.parent_id.as_deref() {
+            None => prop_assert_eq!(c.depth, 0),
+            Some(p) => prop_assert_eq!(parent.map(|q| q.category.id.as_str()), Some(p)),
+        }
+        siblings
+            .entry(c.parent_id.as_deref())
+            .or_default()
+            .push(r.amount.minor);
+    }
+    for amounts in siblings.values() {
+        prop_assert!(amounts.windows(2).all(|w| w[0] >= w[1]), "{:?}", amounts);
+    }
+    Ok(())
+}
+
 fn check_shares(s: &Spending) -> Result<(), TestCaseError> {
     if s.total.minor <= 0 {
         prop_assert!(s.rows.iter().all(|r| r.share_bp.is_none()));
@@ -750,6 +833,7 @@ proptest! {
         let data = data_from(&ops);
         let s = spending(&data, &viewer(View::Combined), "2026-01-01", "2026-12-31").unwrap();
         check_shares(&s)?;
+        check_largest_first(&s)?;
         prop_assert!(s.rows.iter().all(|r| r.category.kind == CategoryKind::Expense));
         let roots: i64 = s.rows.iter().filter(|r| r.category.depth == 0).map(|r| r.amount.minor).sum();
         prop_assert_eq!(roots, s.total.minor);

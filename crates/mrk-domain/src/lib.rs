@@ -24,7 +24,7 @@ pub use entry::{
 pub use ledger::{DomainError, EntryKind, Leg, Posting, classify, validate_balanced};
 pub use report::{
     AccountKind, BudgetMatrix, CalendarRow, CashFlow, CashFlowLine, CashFlowMonth, CategoryTree,
-    Cell, Excluded, MatrixMonth, MatrixRow, MonthCalendar, ReportAccount, ReportBudgetLine,
-    ReportCategory, ReportData, ReportError, ReportPosting, Scope, Spending, SpendingRow, TreeRow,
-    View, Viewer, budget_matrix, cash_flow, month_calendar, spending,
+    Cell, Excluded, MatrixMonth, MatrixRow, MatrixTotal, MonthCalendar, ReportAccount,
+    ReportBudgetLine, ReportCategory, ReportData, ReportError, ReportPosting, Scope, Spending,
+    SpendingRow, TreeRow, View, Viewer, budget_matrix, cash_flow, month_calendar, spending,
 };

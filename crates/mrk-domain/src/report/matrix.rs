@@ -7,14 +7,15 @@ use mrk_money::Money;
 use super::flows::flows;
 use super::period::{DateRange, Month, year_months};
 use super::{
-    BudgetMatrix, CategoryTree, Cell, MatrixMonth, MatrixRow, ReportData, ReportError, Viewer,
-    add_to, excluded_list, sum_roots,
+    BudgetMatrix, CategoryTree, Cell, MatrixMonth, MatrixRow, MatrixTotal, ReportData, ReportError,
+    Viewer, add_to, excluded_list, sum_roots,
 };
 use crate::category::CategoryKind;
 
 /// The year's matrix for `viewer`: one row per category in tree order with twelve monthly
 /// cells (planned and actual rolled up through the tree, diff = planned − actual) and a year
-/// total, plus the monthly income, expense, saved and free cash flow. Actuals are attributed
+/// total, plus the monthly income, expense, saved and free cash flow and their year total
+/// (X-17; the "total expenses" line is `year_total.expense.actual` / each month's `expense.actual`). Actuals are attributed
 /// to the entry date (DEC-29 Q6). Year 1970–9999, else `InvalidYear`.
 pub fn budget_matrix(
     data: &ReportData,
@@ -102,10 +103,27 @@ pub fn budget_matrix(
         });
     }
 
+    let zero = Money::zero(base);
+    let mut year_total = MatrixTotal {
+        income: Cell::zero(base),
+        expense: Cell::zero(base),
+        saved: zero,
+        free_cash_flow: zero,
+    };
+    for m in &summary {
+        year_total = MatrixTotal {
+            income: year_total.income.checked_add(&m.income)?,
+            expense: year_total.expense.checked_add(&m.expense)?,
+            saved: year_total.saved.checked_add(m.saved)?,
+            free_cash_flow: year_total.free_cash_flow.checked_add(m.free_cash_flow)?,
+        };
+    }
+
     Ok(BudgetMatrix {
         year,
         rows,
         months: summary,
+        year_total,
         excluded: excluded_list(excluded),
     })
 }

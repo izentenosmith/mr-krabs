@@ -16,7 +16,8 @@ use crate::category::CategoryKind;
 const WHOLE_BP: u32 = 10_000;
 
 /// Spending over the civil dates `from`–`to` (inclusive) for `viewer`: one row per expense
-/// category in tree order with its rolled-up net actual and its share of total spending in
+/// category, depth-first with siblings largest amount first (ties in tree order), with its
+/// rolled-up net actual and its share of total spending in
 /// basis points.
 ///
 /// Shares are split top-down with the largest-remainder rule, so they are exact: the roots'
@@ -61,12 +62,39 @@ pub fn spending(
         })
         .collect();
     Ok(Spending {
-        rows,
+        rows: largest_first(rows),
         total,
         excluded: excluded_list(
             flows.left_out_entries(|c| c == Counts::Category(CategoryKind::Expense)),
         ),
     })
+}
+
+/// Reorders tree-ordered rows so that siblings (and roots) come largest amount first (X-17),
+/// still depth-first with each group's children right after it. The sort is stable, so ties
+/// keep the tree's sibling order.
+fn largest_first(rows: Vec<SpendingRow>) -> Vec<SpendingRow> {
+    let mut children: BTreeMap<Option<String>, Vec<SpendingRow>> = BTreeMap::new();
+    for r in rows {
+        children
+            .entry(r.category.parent_id.clone())
+            .or_default()
+            .push(r);
+    }
+    for list in children.values_mut() {
+        list.sort_by_key(|r| std::cmp::Reverse(r.amount.minor));
+    }
+    let mut out = Vec::new();
+    let mut stack: Vec<SpendingRow> = children.remove(&None).unwrap_or_default();
+    stack.reverse();
+    while let Some(r) = stack.pop() {
+        if let Some(mut kids) = children.remove(&Some(r.category.id.clone())) {
+            kids.reverse();
+            stack.extend(kids);
+        }
+        out.push(r);
+    }
+    out
 }
 
 /// Splits 10 000 bp over the expense roots by amount, then each group's share over its own
