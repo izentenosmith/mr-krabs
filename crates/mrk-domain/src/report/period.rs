@@ -20,12 +20,7 @@ impl Month {
         if b.len() != 7 || b[4] != b'-' {
             return Err(invalid());
         }
-        let number = |r: std::ops::Range<usize>| {
-            b[r].iter().try_fold(0u32, |n, c| {
-                c.is_ascii_digit().then(|| n * 10 + u32::from(c - b'0'))
-            })
-        };
-        match (number(0..4), number(5..7)) {
+        match (digits(&b[0..4]), digits(&b[5..7])) {
             (Some(year), Some(month)) if YEARS.contains(&year) && (1..=12).contains(&month) => {
                 Ok(Self { year, month })
             }
@@ -35,14 +30,10 @@ impl Month {
 
     /// The month a civil `YYYY-MM-DD` date (already validated) falls in.
     pub fn of_date(date: &str) -> Self {
-        let digits = |r: std::ops::Range<usize>| {
-            date.as_bytes()[r]
-                .iter()
-                .fold(0u32, |n, c| n * 10 + u32::from(c - b'0'))
-        };
+        let b = date.as_bytes();
         Self {
-            year: digits(0..4),
-            month: digits(5..7),
+            year: digits(&b[0..4]).unwrap_or(0),
+            month: digits(&b[5..7]).unwrap_or(0),
         }
     }
 
@@ -75,9 +66,14 @@ impl Month {
 
 /// The day of month of a civil `YYYY-MM-DD` date (already validated).
 pub(crate) fn day_of(date: &str) -> u32 {
-    date.as_bytes()[8..10]
-        .iter()
-        .fold(0u32, |n, c| n * 10 + u32::from(c - b'0'))
+    digits(&date.as_bytes()[8..10]).unwrap_or(0)
+}
+
+/// The number written by ASCII digits; `None` when any byte is not a digit.
+fn digits(bytes: &[u8]) -> Option<u32> {
+    bytes.iter().try_fold(0u32, |n, c| {
+        c.is_ascii_digit().then(|| n * 10 + u32::from(c - b'0'))
+    })
 }
 
 impl std::fmt::Display for Month {
