@@ -271,6 +271,8 @@ pub(crate) fn nodes_of(rows: &[CategoryRow]) -> Result<Vec<CategoryNode>, ApiErr
                 parent_id: r.parent_id.clone(),
                 kind: domain_kind(&r.kind)?,
                 live: !r.deleted,
+                sort_order: r.sort_order,
+                name: r.name.clone(),
             })
         })
         .collect()
@@ -301,9 +303,18 @@ fn archived_in_effect(
         .any(|c| archived.get(c).copied().unwrap_or(false))
 }
 
-/// Siblings in tree order: sort order, name, id.
+/// Siblings in tree order, `mrk_domain::sibling_key` on stored rows: kind (income first),
+/// sort order, normalized name (`name_key`), id.
 fn tree_order(a: &CategoryRow, b: &CategoryRow) -> std::cmp::Ordering {
-    (a.sort_order, &a.name, &a.id).cmp(&(b.sort_order, &b.name, &b.id))
+    let key = |r: &CategoryRow| {
+        (
+            r.kind != "income",
+            r.sort_order,
+            r.name_key.clone(),
+            r.id.clone(),
+        )
+    };
+    key(a).cmp(&key(b))
 }
 
 /// A live (not deleted) category, or `NOT_FOUND` (any id, as M1's `category_delete`).

@@ -32,6 +32,14 @@ pub struct CategoryNode {
     pub kind: CategoryKind,
     /// `false` for tombstoned rows (`deleted = 1`).
     pub live: bool,
+    pub sort_order: i64,
+    pub name: String,
+}
+
+/// Siblings' order, and the member a parent cycle is cut at (X-16): kind (income first),
+/// sort order, accent-insensitive name, then id.
+pub fn sibling_key(n: &CategoryNode) -> (CategoryKind, i64, String, &str) {
+    (n.kind, n.sort_order, normalize_name(&n.name), n.id.as_str())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -208,20 +216,23 @@ pub fn validate_kind_change(
 }
 
 /// The parent each live category is shown under (M1 #29 F3): its own parent when that is live,
-/// otherwise none (a root). A parent cycle, which only sync can create, is broken at its
-/// smallest id, which becomes a root; so every live category appears exactly once and every
-/// walk up the result ends.
+/// otherwise none (a root). A parent cycle, which only sync can create, is cut at its
+/// smallest member by [`sibling_key`], which becomes a root; so every live category appears
+/// exactly once, whatever order the rows come in, and every walk up the result ends.
 pub fn tree_parents(nodes: &[CategoryNode]) -> BTreeMap<String, Option<String>> {
-    let live: BTreeSet<&str> = nodes
+    let by_id: BTreeMap<&str, &CategoryNode> = nodes
         .iter()
         .filter(|n| n.live)
-        .map(|n| n.id.as_str())
+        .map(|n| (n.id.as_str(), n))
         .collect();
     let mut parents: BTreeMap<String, Option<String>> = nodes
         .iter()
         .filter(|n| n.live)
         .map(|n| {
-            let p = n.parent_id.clone().filter(|p| live.contains(p.as_str()));
+            let p = n
+                .parent_id
+                .clone()
+                .filter(|p| by_id.contains_key(p.as_str()));
             (n.id.clone(), p)
         })
         .collect();
@@ -236,8 +247,11 @@ pub fn tree_parents(nodes: &[CategoryNode]) -> BTreeMap<String, Option<String>> 
                 break;
             }
             if let Some(at) = path.iter().position(|p| *p == id) {
-                // `path[at..]` is a cycle: its smallest id becomes a root.
-                if let Some(min) = path[at..].iter().min() {
+                // `path[at..]` is a cycle: its smallest member becomes a root.
+                if let Some(min) = path[at..]
+                    .iter()
+                    .min_by_key(|m| sibling_key(by_id[m.as_str()]))
+                {
                     parents.insert(min.clone(), None);
                 }
                 break;
@@ -384,6 +398,8 @@ mod tests {
             parent_id: parent.map(Into::into),
             kind,
             live: true,
+            sort_order: 0,
+            name: id.into(),
         }
     }
 
@@ -540,6 +556,24 @@ mod tests {
     }
 
     #[test]
+    fn a_cycle_is_cut_by_kind_sort_order_name_then_id() {
+        let at = |id: &str, parent: &str, sort: i64, name: &str| CategoryNode {
+            sort_order: sort,
+            name: name.into(),
+            ..node(id, Some(parent), Expense)
+        };
+        // Sort order beats id.
+        let p = tree_parents(&[at("a", "b", 5, "A"), at("b", "a", 1, "B")]);
+        assert_eq!((p["a"].as_deref(), p["b"].as_deref()), (Some("b"), None));
+        // Then the accent-insensitive name: "álamo" < "Zeta" although 'Z' < 'á'.
+        let p = tree_parents(&[at("a", "b", 0, "Zeta"), at("b", "a", 0, "álamo")]);
+        assert_eq!(p["b"], None);
+        // Then the id.
+        let p = tree_parents(&[at("b", "a", 0, "X"), at("a", "b", 0, "x")]);
+        assert_eq!(p["a"], None);
+    }
+
+    #[test]
     fn move_position_inserts_at_the_index() {
         let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
         assert_eq!(
@@ -572,6 +606,8 @@ mod tests {
                     parent_id: p.filter(|p| *p != i).map(|p| format!("c{p}")),
                     kind: Expense,
                     live: !dead[i],
+                    sort_order: 0,
+                    name: format!("c{i}"),
                 })
                 .collect();
             let parents = tree_parents(&nodes);
