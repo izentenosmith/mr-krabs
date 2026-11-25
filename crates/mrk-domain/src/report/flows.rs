@@ -91,12 +91,14 @@ pub(crate) fn flows<'a>(
         }
     }
 
+    // An account leg's account, when it is known and in the viewer's view.
+    let account_in_view = |id: &str| accounts.get(id).copied().filter(|a| viewer.sees(&a.scope));
+
     let mut out = Flows::default();
     for legs in entries.values() {
-        let in_view = |id: &str| accounts.get(id).is_some_and(|a| viewer.sees(&a.scope));
         let entry_in_view = legs
             .iter()
-            .any(|p| matches!(&p.leg, Leg::Account(id) if in_view(id)));
+            .any(|p| matches!(&p.leg, Leg::Account(id) if account_in_view(id).is_some()));
         if !entry_in_view {
             continue;
         }
@@ -106,9 +108,7 @@ pub(crate) fn flows<'a>(
             // is +, out is −, savings ↔ savings nets to 0, a card payment has none.
             for p in legs {
                 let Leg::Account(id) = &p.leg else { continue };
-                let saving = accounts
-                    .get(id.as_str())
-                    .is_some_and(|a| a.kind.is_saving() && viewer.sees(&a.scope));
+                let saving = account_in_view(id).is_some_and(|a| a.kind.is_saving());
                 if !saving {
                     continue;
                 }
