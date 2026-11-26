@@ -81,6 +81,43 @@ describe("category_tree (S4, DEC-13)", () => {
   });
 });
 
+describe("M2 commands (C0, DEC-30)", () => {
+  it("createApi sends every M2 catalogue name with the Tauri argument keys", async () => {
+    const { calls, api } = recorder();
+    const budget = { period: "2026-11", categoryId: "c", scope: "household" as const, amount: "150.000" };
+    const all = [
+      api.category.create({ kind: "expense", name: "Cine" }),
+      api.category.update({ id: "c", name: "Cine" }),
+      api.category.move({ id: "c", parentId: "p", index: 0 }),
+      api.category.archive({ id: "c", archived: true }),
+      api.category.delete({ id: "c", mergeIntoId: "d" }),
+      api.budget.set(budget),
+      api.budget.copyMonth({ from: "2026-10", to: "2026-11" }),
+      api.budget.matrix({ year: 2026, view: "combined" }),
+      api.report.monthCalendar({ month: "2026-11", view: "household" }),
+      api.report.cashFlow({ from: "2026-01", to: "2026-11", view: "combined" }),
+      api.report.spending({ from: "2026-11", to: "2026-11", view: "personal" }),
+      api.tx.list({ view: "combined", categoryId: "c" }),
+    ];
+    const results = await Promise.allSettled(all);
+    expect(results.every((r) => r.status === "rejected")).toBe(true);
+    expect(calls).toEqual([
+      ["category_create", { input: { kind: "expense", name: "Cine" } }],
+      ["category_update", { input: { id: "c", name: "Cine" } }],
+      ["category_move", { input: { id: "c", parentId: "p", index: 0 } }],
+      ["category_archive", { input: { id: "c", archived: true } }],
+      ["category_delete", { input: { id: "c", mergeIntoId: "d" } }],
+      ["budget_set", { input: budget }],
+      ["budget_copy_month", { input: { from: "2026-10", to: "2026-11" } }],
+      ["budget_matrix", { query: { year: 2026, view: "combined" } }],
+      ["report_month_calendar", { query: { month: "2026-11", view: "household" } }],
+      ["report_cash_flow", { query: { from: "2026-01", to: "2026-11", view: "combined" } }],
+      ["report_spending", { query: { from: "2026-11", to: "2026-11", view: "personal" } }],
+      ["tx_list", { query: { view: "combined", categoryId: "c" } }],
+    ]);
+  });
+});
+
 describe("ApiError fields", () => {
   it("keeps field errors for forms", () => {
     const e = ApiError.from({
