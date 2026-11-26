@@ -41,6 +41,11 @@
   /* Scope badges (FR-HH-02). */
   --scope-personal: #6d28d9;
   --scope-household: #0f766e;
+
+  /* Categorical chart series (MASTER §8): marks only, never text; fixed order. */
+  --chart-1: #2a92bb;
+  --chart-2: #5c48a2;
+  --chart-3: #b54696;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -74,6 +79,10 @@
 
     --scope-personal: #a78bfa;
     --scope-household: #2dd4bf;
+
+    --chart-1: #2a92bb;
+    --chart-2: #876fe4;
+    --chart-3: #b54696;
   }
 }
 
@@ -112,6 +121,9 @@
   --color-warning-foreground: var(--warning-foreground);
   --color-scope-personal: var(--scope-personal);
   --color-scope-household: var(--scope-household);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
 }
 
 @layer base {

@@ -60,6 +60,7 @@ mode (lowest: warning on white, 5.0:1). Re-check when adding a token.
 | Transfer between own accounts | `muted-foreground`, `⇄` icon, no sign — never styled as spending (FR-TX-02) |
 | Over budget | `destructive` + alert icon + "excedido" text |
 | Out-of-range bill | `warning` + alert icon + "Fuera de rango" |
+| Report grids and tiles (M2) | `foreground` for every plain amount, `display` as received (state cells keep their state color: `VarianceCell`, "déficit"): the row's section or the tile's caption names the kind, so income is not `success` there. A credit (a negative actual in an expense category, or a negative expense total; never a Planificado or Diferencia cell) adds a visible `text-xs text-muted-foreground` "crédito" (`pages/budget.md`). |
 
 ### Status & scope badges (icon + label, always)
 
@@ -119,6 +120,7 @@ Minimum 12px anywhere. Body is 14px — between macOS native (13) and the web mi
 │ Transacc.  │  content (tables, matrices, charts)      │
 │ Presupuesto│                                          │
 │ Calendario │                                          │
+│ Categorías │                                          │
 │ Importar   │                                          │
 │ Reportes   │                                          │
 │ ─ Cuentas ─│                                          │
@@ -130,7 +132,9 @@ Minimum 12px anywhere. Body is 14px — between macOS native (13) and the web mi
 - Lens switcher (FR-HH-03) is a `ToggleGroup` at the top of the sidebar; the active lens
   persists per window.
 - Active nav item: `accent` fill + 3px `brand` left marker + 500 weight.
-- One primary button per view (`+ Nuevo` in the toolbar). Others are `outline`/`ghost`.
+- At most one primary button per view, last in its page header row (§5.4; the toolbar in
+  the sketch above is that row). Transacciones' is "Nuevo"; some views have none. Others are
+  `outline`/`ghost`.
 - Destructive actions live in menus or dialogs, never next to the primary button.
 
 ### Keyboard (NFR-11)
@@ -140,9 +144,9 @@ Minimum 12px anywhere. Body is 14px — between macOS native (13) and the web mi
 | ⌘K | Command palette |
 | ⌘N | New transaction |
 | ⌘1 / ⌘2 / ⌘3 | Lens: Personal / Household / Combined |
-| ⌘F | Focus search |
+| ⌘F | Focus search (on views that have one) |
 | ↑ ↓ / Enter / Esc | Move in tables / open / close |
-| ⌘Z | Undo last delete or import (FR-TX-08, FR-IM-05) |
+| ⌘Z | Undo: runs the `Deshacer` of the most recent undo toast still showing (a delete, import or archive, FR-TX-08, FR-IM-05); with none showing it does nothing. Actions that show no undo toast (a category delete) are not undoable and leave an earlier toast's undo in place |
 
 Focus ring always visible: `ring-[3px] ring-ring/50` (Tailwind `focus-visible:`).
 
@@ -151,7 +155,7 @@ Focus ring always visible: `ring-[3px] ring-ring/50` (Tailwind `focus-visible:`)
 ### 5.1 Accounts sidebar
 - Section header "Cuentas" (`text-xs font-medium text-muted-foreground`) with a ghost icon
   button `Plus` (`aria-label` "Nueva cuenta"). Not a primary button (the view's primary is
-  the toolbar's "+ Nuevo").
+  the view's own, §5).
 - Accounts are grouped by kind, in this order, empty groups hidden; group caption `text-xs
   text-muted-foreground`:
   1. Bancos y efectivo — checking, cuenta_vista, savings, cash
@@ -185,6 +189,35 @@ Focus ring always visible: `ring-[3px] ring-ring/50` (Tailwind `focus-visible:`)
 - It switches at once (no reload, no confirmation, no toast), and keyboard focus stays on the toggle.
 - Not in the command palette or the toolbar.
 
+### 5.4 Pages and period stepper (M2)
+- **Sidebar order** (Lucide icon): Resumen (`LayoutDashboard`) · Transacciones
+  (`ArrowLeftRight`) · Presupuesto (`Table2`) · Calendario (`CalendarDays`) · Categorías
+  (`FolderTree`). Importar and Reportes join when their milestones land. Items use §5's
+  active style.
+- **Period stepper** (Presupuesto, Calendario, Resumen): in the page's header row, a
+  ghost icon button `ChevronLeft` ("Mes anterior" / "Año anterior"), the period label as a
+  ghost button (`text-sm font-medium`, min-width 144px, centered; month name and year in
+  the UI language, e.g. "Noviembre 2026"), and `ChevronRight` ("Mes siguiente" / "Año
+  siguiente"). The label button's accessible name is "Ir al período actual ({período})"; it
+  is `aria-disabled` (never the native `disabled`, which would drop focus) while the current
+  period is shown. A visually hidden `aria-live="polite"`
+  region announces the new period after every step. Month and weekday names come from the
+  i18n catalogue (es-CL and en), never from hand-written formatting.
+- **Shared period:** one month, kept per window across Presupuesto, Calendario and Resumen.
+  A year view (Presupuesto's "Año") shows that month's year and steps it by a year, keeping
+  the month number.
+- **Page header row** (44px): page title (§3) on the left, the page's controls after it,
+  the page's single primary button last (if it has one). This row *is* the toolbar of §5's
+  sketch: no page has a second toolbar, stepper or primary above it.
+- **Period helper** (X-17): one tested module, `apps/desktop/src/lib/period.ts`, holds the
+  only calendar arithmetic in TS — previous/next month or year, the 12-month window ending at
+  a month, a month's first and last civil day — used **only to build query inputs**; Rust
+  still validates every period and date. It never touches money and never formats a
+  percentage (those arrive as `PercentDto.display`).
+- **Shared page rules** (matrix, calendar and dashboard pages in `pages/`): row semantics,
+  sticky rules, section rows, drill-down, credits and the excluded-currency notice
+  (DEC-29 Q8) are specified once in `pages/budget.md` and reused.
+
 ## 6. Motion
 
 - CSS transitions only (no animation library).
@@ -208,7 +241,7 @@ Card, Table, Dialog, Sheet, Command, ToggleGroup, Select, Input, Tooltip, Sonner
 | `ScopeBadge` | Personal/Hogar icon + label + scope color. |
 | `StatusBadge` | Pendiente/Liquidado/Conciliado/Propuesto per §2. |
 | `BudgetBar` | Progress bar + "% usado" + "$X restante/excedido" text; over budget → `destructive` + icon. |
-| `VarianceCell` | Signed Δ with ▲/▼ icon; for the plan-vs-real matrix (FR-RP-07). |
+| `VarianceCell` | Signed Δ with ▲/▼ icon; for the plan-vs-real matrix (FR-RP-07). States in `pages/budget.md`. |
 | `ProposedRow` | AI-proposed import row: Sparkles + "Propuesto", tinted until approved. |
 
 Lists over 50 rows are virtualized (NFR-05).
@@ -235,6 +268,8 @@ Lists over 50 rows are virtualized (NFR-05).
   - In a region (sidebar, page) it replaces the content, and the view's primary button is disabled.
   - In a dialog it is the form-level message, and the form stays open with its values.
 - **Errors from an action outside a form** (delete, restore, loading more rows): Sonner `toast.error` with the same per-code text as §7.1's form-level error.
+- **Not yet available from an action outside a form** (an in-cell edit, a copy, a keyboard move answering `NOT_IMPLEMENTED`): Sonner default toast (never `toast.error`) with the `Hourglass` icon and "Aún no disponible" + "Esta función llega en una próxima versión."
+- **Cell error popover** (an in-cell edit answering `VALIDATION`): a popover anchored under the cell (`bg-popover`, border, `shadow-md`, `text-xs`) with `CircleAlert` + the field message in `text-destructive`. It never takes focus (the input keeps it). The input has `aria-invalid` and `aria-describedby` pointing at it (as §7.1), so the message is read whenever focus returns to the input; the popover is `role="alert"` only when focus never left the input (Enter commit), so it is announced once either way. It closes when the edit is committed, cancelled, or its text changes.
 - **Undo toast:** Sonner default toast. The text says what happened ("Transacción eliminada"), with one `Deshacer` action and an 8 s duration.
 
 ## 8. Charts
@@ -242,10 +277,80 @@ Lists over 50 rows are virtualized (NFR-05).
 - Budget vs. actual → bars with target marker. Cash flow → bars above and below zero
   (in/out). Net worth → line.
 - Every chart ships with: a table view of the same series, an `aria-label` summary,
-  visible legend, tooltips reachable by keyboard.
-- Series values arrive pre-computed from Rust; the UI renders only.
-- The categorical chart palette is defined (and contrast-checked) when the first chart
-  lands (M2 dashboard); it must not reuse `destructive`/`success` for non-semantic series.
+  visible legend, tooltips reachable by keyboard. Two exemptions: a single-series chart
+  needs no legend (its title names the series), and a chart whose every value is directly
+  labelled in text needs no tooltip and, if it is itself a `<table>`, no separate table view.
+- Series values arrive pre-computed from Rust; the UI renders only. Every number shown
+  (tooltip, label, table) is a `display` string; there are no numeric axis tick labels,
+  because they would need number formatting in TS. Plotted values arrive as Rust-computed
+  signed `MoneyDto` plot values (X-17); the UI passes `Number(minor)` to the chart library as
+  an opaque coordinate and does nothing else with it.
+- Marks: bars 4px radius on the data end (single-segment bars; stacked segments are square),
+  anchored to the baseline; 2px `card` gap between
+  stacked segments; lines 2px; markers 8px with a 2px `card` ring; gridlines `border`,
+  horizontal only, plus at most one 1px dashed `muted-foreground` vertical guide marking the
+  focused point. Legend and labels use text tokens (`foreground`, `muted-foreground`), never
+  the series color.
+- **No dual axes.** Two measures of different scale are two charts.
+
+### 8.1 Chart palette
+
+Categorical series take `chart-1`, `chart-2`, `chart-3` **in this order**, and a series
+keeps its color wherever it appears (color follows the entity, never its rank). These are
+**marks only, never text**. A chart needs at most three colored series; a fourth becomes a
+different mark (a `foreground` line, as Flujo libre), a facet, or folds into "Otros" drawn
+in `muted-foreground` — an "Otros" value Rust computes, never one summed in TS. A single-series chart uses the color of the entity it shows (for
+example `chart-2` for spending).
+
+| Token | Light | Dark | Hue |
+|---|---|---|---|
+| `chart-1` | `#2A92BB` | `#2A92BB` | sky blue |
+| `chart-2` | `#5C48A2` | `#876FE4` | violet |
+| `chart-3` | `#B54696` | `#B54696` | magenta |
+
+Chosen to stay clear of the reserved colors: no green (`success`), red (`destructive`),
+amber (`warning`) or coral (`brand`). Measured 2026-11-23 (WCAG 2.x contrast; OKLab ΔE ×100,
+CVD simulated with Machado 2009):
+
+| Check | Light (`card` / `background`) | Dark (`card` / `background`) |
+|---|---|---|
+| `chart-1` contrast | 3.54 / 3.39 | 4.53 / 5.04 |
+| `chart-2` contrast | 7.23 / 6.91 | 4.15 / 4.61 |
+| `chart-3` contrast | 4.91 / 4.69 | 3.27 / 3.64 |
+| Flujo libre line (`foreground`) | 17.85 / 17.06 | 14.65 / 16.30 |
+| Normal-vision ΔE, worst pair (all pairs) | 16.7 (2↔3) | 15.1 (1↔2) |
+| Protan/deutan ΔE, worst pair (all pairs) | 6.0 (1↔3) | 6.0 (1↔3) |
+| ΔE to nearest reserved color | 16.0 (`chart-1`↔`success`, `chart-3`↔`destructive`) | 18.6 (`chart-3`↔`destructive`) |
+
+Every mark is ≥ 3:1 against `card`, `background` and `popover` (WCAG 1.4.11). Marks are never
+drawn on a `muted` fill (dark `chart-3` on `muted` is 2.98:1). The 1↔3 pair sits in the
+colorblind floor band (6–8), so **identity is never color alone**: a visible legend on
+every multi-series chart, position (in the cash-flow chart income is above zero and saving
+below), the table view, and tooltips.
+
+`chart-2` is near `scope-personal` in hue (ΔE 10.4 light / 9.0 dark); that is accepted
+because scope colors appear only in badges with an icon and a label, and a chart series never
+carries scope meaning.
+
+Use in code: chart configs reference the tokens as `color: "var(--chart-N)"`, never the
+`theme: {light, dark}` form of `components/ui/chart.tsx` (its `.dark` selector never matches;
+the app's dark mode is `prefers-color-scheme`). Tailwind utilities are `fill-chart-N`,
+`bg-chart-N`.
+
+**What guards it.** `apps/desktop/src/chart-palette.test.ts` fails when a chart token is
+missing in either mode, is not `#rrggbb`, is below 3:1 on `card`/`background`/`popover`, equals
+any status, brand, primary or scope color, is within OKLab ΔE 15 of a status or brand color or
+of another series, or is not mapped in `@theme`. It reads `index.css` with a CSS parser and
+also fails when the file's shape lets anything else supply these colors: not exactly one
+top-level light `:root`, one unconditional `@media (prefers-color-scheme: dark)` holding only a
+`:root` rule, and one top-level `@theme inline`; a chart or surface token (`--chart…`, `--card`,
+`--background`, `--popover`, any case) declared anywhere else; a `--color-chart…` or surface
+`--color-*` declared outside `@theme` or mapped to anything but its `var(--…)`; an extra chart
+token; an escaped custom-property name. It guards the tokens, not which utility a component
+paints with: that `body` and `Card` use `bg-background` and `bg-card` is the component's job
+(§7). The colorblind (protan/deutan) figures above
+were measured once with the dataviz palette validator; re-measure and update this table when a
+value changes.
 
 ---
 
