@@ -1,16 +1,72 @@
 //! Acceptance tests for slice K1 (category commands): REQ-15 – REQ-19 (DEC-30 Q10).
-//! Every test acts through `App` on an app opened on a temp file (the category commands are
-//! dispatched once C0's catalogue lands; transactions go through `dispatch` already). What was
+//! Every write goes through the command boundary (`dispatch`, the devserver's and Tauri's
+//! shared entry) on an app opened on a temp file; the tree is read through `App`. What was
 //! persisted (rows, change log) is read back through a second connection.
 
 use std::path::PathBuf;
 
-use mr_krabs_core::api::{CategoryKind, CategoryNodeDto, CategoryTreeQuery};
+use mr_krabs_core::api::{CategoryDto, CategoryKind, CategoryNodeDto, CategoryTreeQuery};
 use mr_krabs_core::commands::dispatch;
 use mr_krabs_core::seed::seed_id;
 use mr_krabs_core::{ApiError, App, ErrorCode};
 use mrk_store::Store;
 use serde_json::{Value, json};
+
+/// The K1 commands, called by name through `dispatch` with the wire arguments of
+/// bindings.ts, answering the decoded `CategoryDto`.
+trait CategoryCommands {
+    fn run(&mut self, name: &str, input: Value) -> Result<CategoryDto, ApiError>;
+    fn cat_create(
+        &mut self,
+        kind: CategoryKind,
+        parent_id: Option<&str>,
+        name: &str,
+        icon: Option<&str>,
+    ) -> Result<CategoryDto, ApiError> {
+        let input = json!({ "kind": kind, "parentId": parent_id, "name": name, "icon": icon });
+        self.run("category_create", input)
+    }
+    fn cat_update(
+        &mut self,
+        id: &str,
+        name: Option<&str>,
+        icon: Option<&str>,
+    ) -> Result<CategoryDto, ApiError> {
+        self.run(
+            "category_update",
+            json!({ "id": id, "name": name, "icon": icon }),
+        )
+    }
+    fn cat_move(
+        &mut self,
+        id: &str,
+        parent_id: Option<&str>,
+        index: usize,
+    ) -> Result<CategoryDto, ApiError> {
+        let input = json!({ "id": id, "parentId": parent_id, "index": index });
+        self.run("category_move", input)
+    }
+    fn cat_delete(&mut self, id: &str, merge_into_id: Option<&str>) -> Result<(), ApiError>;
+    fn cat_archive(&mut self, id: &str, archived: bool) -> Result<CategoryDto, ApiError> {
+        self.run(
+            "category_archive",
+            json!({ "id": id, "archived": archived }),
+        )
+    }
+}
+
+impl CategoryCommands for App {
+    fn run(&mut self, name: &str, input: Value) -> Result<CategoryDto, ApiError> {
+        let out = dispatch(self, name, json!({ "input": input }))?;
+        Ok(serde_json::from_value(out).unwrap())
+    }
+    fn cat_delete(&mut self, id: &str, merge_into_id: Option<&str>) -> Result<(), ApiError> {
+        let input = json!({ "id": id, "mergeIntoId": merge_into_id });
+        let out = dispatch(self, "category_delete", json!({ "input": input }))?;
+        assert_eq!(out, Value::Null);
+        Ok(())
+    }
+}
 
 struct Env {
     dir: PathBuf,
@@ -91,7 +147,7 @@ impl Env {
 
     fn create(&mut self, kind: CategoryKind, parent: Option<&str>, name: &str) -> String {
         self.app
-            .category_create(kind, parent, name, None)
+            .cat_create(kind, parent, name, None)
             .unwrap_or_else(|e| panic!("create {name}: {e} {:?}", e.fields))
             .id
     }
@@ -196,15 +252,15 @@ fn req15_create_refuses_duplicates_wrong_kind_and_bad_names_writing_nothing() {
     let app = &mut env.app;
 
     let e = app
-        .category_create(CategoryKind::Expense, Some(&food), "supermercado", None)
+        .cat_create(CategoryKind::Expense, Some(&food), "supermercado", None)
         .unwrap_err();
     field(&e, ErrorCode::Validation, "name", "errors.field.duplicate");
     let e = app
-        .category_create(CategoryKind::Expense, Some(&food), " SÚPERMERCADO ", None)
+        .cat_create(CategoryKind::Expense, Some(&food), " SÚPERMERCADO ", None)
         .unwrap_err();
     field(&e, ErrorCode::Validation, "name", "errors.field.duplicate");
     let e = app
-        .category_create(CategoryKind::Expense, Some(&seed_id("income")), "X", None)
+        .cat_create(CategoryKind::Expense, Some(&seed_id("income")), "X", None)
         .unwrap_err();
     field(
         &e,
@@ -213,23 +269,23 @@ fn req15_create_refuses_duplicates_wrong_kind_and_bad_names_writing_nothing() {
         "errors.field.wrongKind",
     );
     let e = app
-        .category_create(CategoryKind::Expense, Some(UNKNOWN), "X", None)
+        .cat_create(CategoryKind::Expense, Some(UNKNOWN), "X", None)
         .unwrap_err();
     field(&e, ErrorCode::NotFound, "parentId", "errors.field.notFound");
     // A malformed id is just an unknown one.
     let e = app
-        .category_create(CategoryKind::Expense, Some("nope"), "X", None)
+        .cat_create(CategoryKind::Expense, Some("nope"), "X", None)
         .unwrap_err();
     field(&e, ErrorCode::NotFound, "parentId", "errors.field.notFound");
     let e = app
-        .category_create(CategoryKind::Expense, None, "   ", None)
+        .cat_create(CategoryKind::Expense, None, "   ", None)
         .unwrap_err();
     field(&e, ErrorCode::Validation, "name", "errors.field.required");
     let e = app
-        .category_create(CategoryKind::Expense, None, &"x".repeat(81), None)
+        .cat_create(CategoryKind::Expense, None, &"x".repeat(81), None)
         .unwrap_err();
     field(&e, ErrorCode::Validation, "name", "errors.field.tooLong");
-    app.category_create(CategoryKind::Expense, None, &"x".repeat(80), None)
+    app.cat_create(CategoryKind::Expense, None, &"x".repeat(80), None)
         .unwrap();
     assert_eq!(env.log_count(), before + 1);
 
@@ -257,7 +313,7 @@ fn req16_rename_shows_on_past_entries_and_logs_one_row() {
 
     let n = env
         .app
-        .category_update(&sup, Some(" Súper "), Some("cart"))
+        .cat_update(&sup, Some(" Súper "), Some("cart"))
         .unwrap();
     assert_eq!(
         (n.name.as_str(), n.icon.as_deref()),
@@ -280,9 +336,9 @@ fn req16_rename_shows_on_past_entries_and_logs_one_row() {
     assert_eq!(keys, ["icon", "name", "name_key"]);
 
     // No-op: nothing logged. A blank icon clears it.
-    env.app.category_update(&sup, Some("Súper"), None).unwrap();
+    env.app.cat_update(&sup, Some("Súper"), None).unwrap();
     assert_eq!(env.category_log(&sup).len(), log_before + 1);
-    let n = env.app.category_update(&sup, None, Some(" ")).unwrap();
+    let n = env.app.cat_update(&sup, None, Some(" ")).unwrap();
     assert_eq!(n.icon, None);
 }
 
@@ -292,24 +348,21 @@ fn req16_update_refuses_duplicates_and_unknown_ids() {
     let sup = seed_id("expense.food.supermarket");
     let e = env
         .app
-        .category_update(&sup, Some("Delivery"), None)
+        .cat_update(&sup, Some("Delivery"), None)
         .unwrap_err();
     field(&e, ErrorCode::Validation, "name", "errors.field.duplicate");
     // Renaming to its own name in another case is not a duplicate.
     env.app
-        .category_update(&sup, Some("SUPERMERCADO"), None)
+        .cat_update(&sup, Some("SUPERMERCADO"), None)
         .unwrap();
-    let e = env
-        .app
-        .category_update(UNKNOWN, Some("X"), None)
-        .unwrap_err();
+    let e = env.app.cat_update(UNKNOWN, Some("X"), None).unwrap_err();
     assert_eq!(e.code, ErrorCode::NotFound);
     env.app
-        .category_delete(&seed_id("expense.leisure.cinema"), None)
+        .cat_delete(&seed_id("expense.leisure.cinema"), None)
         .unwrap();
     let e = env
         .app
-        .category_update(&seed_id("expense.leisure.cinema"), Some("X"), None)
+        .cat_update(&seed_id("expense.leisure.cinema"), Some("X"), None)
         .unwrap_err();
     assert_eq!(e.code, ErrorCode::NotFound);
 }
@@ -323,7 +376,7 @@ fn req17_move_reparents_at_any_depth_and_reorders() {
     let leisure = seed_id("expense.leisure");
     let delivery = seed_id("expense.food.delivery");
 
-    let n = env.app.category_move(&delivery, Some(&leisure), 0).unwrap();
+    let n = env.app.cat_move(&delivery, Some(&leisure), 0).unwrap();
     assert_eq!(n.parent_id.as_deref(), Some(leisure.as_str()));
     assert_eq!(env.child_ids(&leisure)[0], delivery);
     assert!(!env.child_ids(&food).contains(&delivery));
@@ -331,16 +384,16 @@ fn req17_move_reparents_at_any_depth_and_reorders() {
     // Reorder within the parent: last, then back to the middle.
     let kids = env.child_ids(&leisure);
     env.app
-        .category_move(&delivery, Some(&leisure), kids.len() - 1)
+        .cat_move(&delivery, Some(&leisure), kids.len() - 1)
         .unwrap();
     assert_eq!(env.child_ids(&leisure).last(), Some(&delivery));
-    env.app.category_move(&delivery, Some(&leisure), 1).unwrap();
+    env.app.cat_move(&delivery, Some(&leisure), 1).unwrap();
     let mut expected: Vec<String> = kids[1..].to_vec();
     expected.insert(1, delivery.clone());
     assert_eq!(env.child_ids(&leisure), expected);
 
     // To a root, and under a sub-category (depth 3).
-    env.app.category_move(&delivery, None, 0).unwrap();
+    env.app.cat_move(&delivery, None, 0).unwrap();
     let roots: Vec<String> = env
         .app
         .category_tree(CategoryTreeQuery {
@@ -352,7 +405,7 @@ fn req17_move_reparents_at_any_depth_and_reorders() {
         .collect();
     assert_eq!(roots[0], delivery);
     let sup = seed_id("expense.food.supermarket");
-    env.app.category_move(&delivery, Some(&sup), 0).unwrap();
+    env.app.cat_move(&delivery, Some(&sup), 0).unwrap();
     assert_eq!(env.child_ids(&sup), [delivery]);
 }
 
@@ -365,41 +418,36 @@ fn req17_move_refuses_cycles_kind_changes_collisions_and_bad_index() {
     let before = env.log_count();
     let app = &mut env.app;
 
-    let e = app.category_move(&food, Some(&organic), 0).unwrap_err();
+    let e = app.cat_move(&food, Some(&organic), 0).unwrap_err();
     field(&e, ErrorCode::Validation, "parentId", "errors.field.cycle");
-    let e = app.category_move(&food, Some(&food), 0).unwrap_err();
+    let e = app.cat_move(&food, Some(&food), 0).unwrap_err();
     field(&e, ErrorCode::Validation, "parentId", "errors.field.cycle");
-    let e = app
-        .category_move(&sup, Some(&seed_id("income")), 0)
-        .unwrap_err();
+    let e = app.cat_move(&sup, Some(&seed_id("income")), 0).unwrap_err();
     field(
         &e,
         ErrorCode::Validation,
         "parentId",
         "errors.field.wrongKind",
     );
-    let e = app.category_move(&sup, Some(UNKNOWN), 0).unwrap_err();
+    let e = app.cat_move(&sup, Some(UNKNOWN), 0).unwrap_err();
     field(&e, ErrorCode::NotFound, "parentId", "errors.field.notFound");
     // Transporte has no "Supermercado"; Ocio's children are 3: index 4 is past the end.
     let leisure = seed_id("expense.leisure");
     let n = env.child_ids(&leisure).len();
-    let e = env
-        .app
-        .category_move(&sup, Some(&leisure), n + 1)
-        .unwrap_err();
+    let e = env.app.cat_move(&sup, Some(&leisure), n + 1).unwrap_err();
     field(
         &e,
         ErrorCode::Validation,
         "index",
         "errors.field.outOfRange",
     );
-    let e = env.app.category_move(UNKNOWN, None, 0).unwrap_err();
+    let e = env.app.cat_move(UNKNOWN, None, 0).unwrap_err();
     assert_eq!(e.code, ErrorCode::NotFound);
     assert_eq!(env.log_count(), before);
 
     // A name already under the destination.
     let dup = env.create(CategoryKind::Expense, Some(&leisure), "Supermercado");
-    let e = env.app.category_move(&sup, Some(&leisure), 0).unwrap_err();
+    let e = env.app.cat_move(&sup, Some(&leisure), 0).unwrap_err();
     field(&e, ErrorCode::Validation, "name", "errors.field.duplicate");
     assert!(env.child_ids(&leisure).contains(&dup));
 }
@@ -473,10 +521,10 @@ fn req18_archive_hides_the_subtree_and_unarchive_restores_it() {
     let delivery = seed_id("expense.food.delivery");
     let organic = env.create(CategoryKind::Expense, Some(&sup), "Orgánico");
     // Archived on its own before the group.
-    env.app.category_archive(&delivery, true).unwrap();
+    env.app.cat_archive(&delivery, true).unwrap();
     let before = env.log_count();
 
-    let n = env.app.category_archive(&food, true).unwrap();
+    let n = env.app.cat_archive(&food, true).unwrap();
     assert!(n.is_archived);
     assert_eq!(env.log_count(), before + 1, "one row written");
     for id in [&food, &sup, &organic, &delivery] {
@@ -490,10 +538,10 @@ fn req18_archive_hides_the_subtree_and_unarchive_restores_it() {
         0
     );
     // Idempotent: nothing logged.
-    env.app.category_archive(&food, true).unwrap();
+    env.app.cat_archive(&food, true).unwrap();
     assert_eq!(env.log_count(), before + 1);
 
-    env.app.category_archive(&food, false).unwrap();
+    env.app.cat_archive(&food, false).unwrap();
     // Unarchiving restores the subtree with one write: the group's own row.
     assert_eq!(env.log_count(), before + 2, "no write per child");
     assert_eq!(
@@ -514,7 +562,7 @@ fn req18_archived_category_keeps_existing_entries_valid_and_refuses_new_ones() {
     let tx = env.expense(&account, &sup).unwrap();
     let id = tx["id"].as_str().unwrap().to_owned();
 
-    env.app.category_archive(&food, true).unwrap();
+    env.app.cat_archive(&food, true).unwrap();
     // New entry into a category archived through its group.
     let e = env.expense(&account, &sup).unwrap_err();
     field(
@@ -550,7 +598,7 @@ fn req18_archived_category_keeps_existing_entries_valid_and_refuses_new_ones() {
     // Creating or moving under an archived group is refused.
     let e = env
         .app
-        .category_create(CategoryKind::Expense, Some(&sup), "X", None)
+        .cat_create(CategoryKind::Expense, Some(&sup), "X", None)
         .unwrap_err();
     field(
         &e,
@@ -560,7 +608,7 @@ fn req18_archived_category_keeps_existing_entries_valid_and_refuses_new_ones() {
     );
     let e = env
         .app
-        .category_move(&seed_id("expense.leisure.cinema"), Some(&food), 0)
+        .cat_move(&seed_id("expense.leisure.cinema"), Some(&food), 0)
         .unwrap_err();
     field(
         &e,
@@ -569,7 +617,7 @@ fn req18_archived_category_keeps_existing_entries_valid_and_refuses_new_ones() {
         "errors.field.archived",
     );
 
-    env.app.category_archive(&food, false).unwrap();
+    env.app.cat_archive(&food, false).unwrap();
     env.expense(&account, &sup).unwrap();
 }
 
@@ -583,13 +631,13 @@ fn req19_delete_unused_and_used_needs_a_merge_target() {
     let account = env.account();
     env.expense(&account, &sup).unwrap();
 
-    env.app.category_delete(&cinema, None).unwrap();
+    env.app.cat_delete(&cinema, None).unwrap();
     assert!(find(&env.tree(), &cinema).is_none());
-    let e = env.app.category_delete(&cinema, None).unwrap_err();
+    let e = env.app.cat_delete(&cinema, None).unwrap_err();
     assert_eq!(e.code, ErrorCode::NotFound);
 
     let before = env.log_count();
-    let e = env.app.category_delete(&sup, None).unwrap_err();
+    let e = env.app.cat_delete(&sup, None).unwrap_err();
     field(
         &e,
         ErrorCode::Validation,
@@ -598,7 +646,7 @@ fn req19_delete_unused_and_used_needs_a_merge_target() {
     );
     let e = env
         .app
-        .category_delete(&sup, Some(&seed_id("income.salary")))
+        .cat_delete(&sup, Some(&seed_id("income.salary")))
         .unwrap_err();
     field(
         &e,
@@ -606,14 +654,14 @@ fn req19_delete_unused_and_used_needs_a_merge_target() {
         "mergeIntoId",
         "errors.field.wrongKind",
     );
-    let e = env.app.category_delete(&sup, Some(UNKNOWN)).unwrap_err();
+    let e = env.app.cat_delete(&sup, Some(UNKNOWN)).unwrap_err();
     field(
         &e,
         ErrorCode::NotFound,
         "mergeIntoId",
         "errors.field.notFound",
     );
-    let e = env.app.category_delete(&sup, Some("nope")).unwrap_err();
+    let e = env.app.cat_delete(&sup, Some("nope")).unwrap_err();
     field(
         &e,
         ErrorCode::NotFound,
@@ -622,7 +670,7 @@ fn req19_delete_unused_and_used_needs_a_merge_target() {
     );
     let e = env
         .app
-        .category_delete(&seed_id("expense.food"), Some(&sup))
+        .cat_delete(&seed_id("expense.food"), Some(&sup))
         .unwrap_err();
     field(
         &e,
@@ -652,7 +700,7 @@ fn req19_merge_moves_postings_and_sums_colliding_budget_lines() {
            ('b3', '2026-11', '{del}', 'household',  40000, 'CLP', 1, 'x');"
     ));
 
-    env.app.category_delete(&sup, Some(&del)).unwrap();
+    env.app.cat_delete(&sup, Some(&del)).unwrap();
 
     let detail = env.ok("tx_get", json!({ "id": tx }));
     assert_eq!(detail["categoryId"], del.as_str(), "{detail}");

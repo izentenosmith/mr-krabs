@@ -13,7 +13,10 @@ use mrk_domain::{
 use mrk_money::Money;
 use mrk_store::{CategoryMergeWrite, CategoryRow};
 
-use crate::api::{CategoryKind, CategoryNodeDto, CategoryTreeQuery};
+use crate::api::{
+    CategoryArchiveInput, CategoryDto, CategoryInput, CategoryMoveInput, CategoryNodeDto,
+    CategoryTreeQuery, CategoryUpdateInput,
+};
 use crate::support::{
     Fields, command, currency_code, field_error, from_wire, new_id, sort_order, wire,
 };
@@ -52,23 +55,18 @@ impl App {
         })
     }
 
-    /// Creates a category of `kind` under `parent_id` (`None`: a root of its kind's tree),
+    /// Creates a category of `kind` under `parentId` (`None`: a root of its kind's tree),
     /// placed after its siblings (REQ-15).
-    pub fn category_create(
-        &mut self,
-        kind: CategoryKind,
-        parent_id: Option<&str>,
-        name: &str,
-        icon: Option<&str>,
-    ) -> Result<CategoryNodeDto, ApiError> {
+    pub fn category_create(&mut self, input: CategoryInput) -> Result<CategoryDto, ApiError> {
         command("category_create", || {
+            let parent_id = input.parent_id.as_deref();
             let mut f = Fields::default();
-            let name = f.name("name", name, CATEGORY_NAME_MAX);
-            let icon = f.optional("icon", icon, ICON_MAX);
+            let name = f.name("name", &input.name, CATEGORY_NAME_MAX);
+            let icon = f.optional("icon", input.icon.as_deref(), ICON_MAX);
             f.finish()?;
             let rows = self.store.category_rows()?;
             let id = new_id();
-            let kind_code = wire(kind);
+            let kind_code = wire(input.kind);
             check_parent(&rows, &id, &kind_code, parent_id)?;
             let mut row = CategoryRow {
                 id,
@@ -95,16 +93,18 @@ impl App {
     /// Renames a category and/or changes its icon (REQ-16). `None` keeps a field; a blank icon
     /// clears it. Its kind never changes. Past entries show the new name: they reference the
     /// category, not its name.
-    pub fn category_update(
-        &mut self,
-        id: &str,
-        name: Option<&str>,
-        icon: Option<&str>,
-    ) -> Result<CategoryNodeDto, ApiError> {
+    pub fn category_update(&mut self, input: CategoryUpdateInput) -> Result<CategoryDto, ApiError> {
         command("category_update", || {
+            let id = input.id.as_str();
             let mut f = Fields::default();
-            let name = name.map(|n| f.name("name", n, CATEGORY_NAME_MAX));
-            let icon = icon.map(|i| f.optional("icon", Some(i), ICON_MAX));
+            let name = input
+                .name
+                .as_deref()
+                .map(|n| f.name("name", n, CATEGORY_NAME_MAX));
+            let icon = input
+                .icon
+                .as_deref()
+                .map(|i| f.optional("icon", Some(i), ICON_MAX));
             f.finish()?;
             let rows = self.store.category_rows()?;
             let mut row = live(&rows, id)?.clone();
@@ -121,16 +121,13 @@ impl App {
         })
     }
 
-    /// Moves a category under `parent_id` (`None`: a root) at position `index` among that
+    /// Moves a category under `parentId` (`None`: a root) at position `index` among that
     /// parent's live children of its kind, in tree order (REQ-17). Those children are
     /// renumbered `0..n`; only rows whose parent or position changes are written.
-    pub fn category_move(
-        &mut self,
-        id: &str,
-        parent_id: Option<&str>,
-        index: usize,
-    ) -> Result<CategoryNodeDto, ApiError> {
+    pub fn category_move(&mut self, input: CategoryMoveInput) -> Result<CategoryDto, ApiError> {
         command("category_move", || {
+            let (id, parent_id) = (input.id.as_str(), input.parent_id.as_deref());
+            let index = usize::try_from(input.index).map_err(ApiError::internal)?;
             let rows = self.store.category_rows()?;
             let mut row = live(&rows, id)?.clone();
             check_parent(&rows, id, &row.kind, parent_id)?;
@@ -169,10 +166,10 @@ impl App {
     /// sub-categories archived on their own. One row written, none when nothing changes.
     pub fn category_archive(
         &mut self,
-        id: &str,
-        archived: bool,
-    ) -> Result<CategoryNodeDto, ApiError> {
+        input: CategoryArchiveInput,
+    ) -> Result<CategoryDto, ApiError> {
         command("category_archive", || {
+            let (id, archived) = (input.id.as_str(), input.archived);
             let rows = self.store.category_rows()?;
             let mut row = live(&rows, id)?.clone();
             if row.is_archived != archived {
@@ -245,11 +242,11 @@ impl App {
     }
 
     /// A live category as the commands return it (no children).
-    fn category_dto(&self, id: &str) -> Result<CategoryNodeDto, ApiError> {
+    fn category_dto(&self, id: &str) -> Result<CategoryDto, ApiError> {
         let rows = self.store.category_rows()?;
         let parents = tree_parents(&nodes_of(&rows)?);
         let row = live(&rows, id)?;
-        Ok(CategoryNodeDto {
+        Ok(CategoryDto {
             id: row.id.clone(),
             parent_id: parents.get(id).cloned().flatten(),
             kind: from_wire(&row.kind)?,
@@ -257,7 +254,6 @@ impl App {
             icon: row.icon.clone(),
             is_archived: archived_in_effect(&rows, &parents, id),
             sort_order: sort_order(row.sort_order)?,
-            children: Vec::new(),
         })
     }
 }
