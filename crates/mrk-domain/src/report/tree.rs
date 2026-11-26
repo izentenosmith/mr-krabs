@@ -1,11 +1,11 @@
 //! The category tree as reports show it, and additive roll-up through it (DEC-30 Q9).
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use mrk_money::{CurrencyCode, Money};
 
 use super::{ReportCategory, ReportError};
-use crate::category::{CategoryKind, normalize_name};
+use crate::category::{CategoryKind, CategoryNode, sibling_key, tree_parents};
 
 /// A category as a report row: its place in the tree.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -40,13 +40,34 @@ impl CategoryTree {
         for c in categories {
             by_id.entry(c.id.as_str()).or_insert(c);
         }
-        let parents = effective_parents(&by_id);
+        let nodes: BTreeMap<&str, CategoryNode> = by_id
+            .values()
+            .map(|c| {
+                let node = CategoryNode {
+                    id: c.id.clone(),
+                    parent_id: c.parent_id.clone(),
+                    kind: c.kind,
+                    live: true,
+                    sort_order: c.sort_order,
+                    name: c.name.clone(),
+                };
+                (c.id.as_str(), node)
+            })
+            .collect();
+        let placed = tree_parents(&nodes.values().cloned().collect::<Vec<_>>());
+        let parents: BTreeMap<&str, Option<&str>> = by_id
+            .keys()
+            .map(|id| (*id, placed.get(*id).and_then(|p| p.as_deref())))
+            .collect();
         let mut children: BTreeMap<Option<&str>, Vec<&ReportCategory>> = BTreeMap::new();
         for c in by_id.values() {
             children.entry(parents[c.id.as_str()]).or_default().push(c);
         }
         for list in children.values_mut() {
-            list.sort_by_cached_key(sibling_key);
+            list.sort_by_cached_key(|c| {
+                let (kind, order, name, id) = sibling_key(&nodes[c.id.as_str()]);
+                (kind, order, name, id.to_owned())
+            });
         }
 
         let mut rows = Vec::with_capacity(by_id.len());
@@ -119,56 +140,4 @@ impl CategoryTree {
             .map(|(r, t)| (r.id.clone(), t))
             .collect())
     }
-}
-
-/// How siblings (and roots) are ordered.
-fn sibling_key(c: &&ReportCategory) -> (CategoryKind, i64, String, String) {
-    (c.kind, c.sort_order, normalize_name(&c.name), c.id.clone())
-}
-
-/// Each category's parent as placed in the tree: its own parent when that is live and does not
-/// close a cycle, else `None`. A cycle is cut at its smallest member by `sibling_key`, so the
-/// result is the same whatever order the rows came in.
-fn effective_parents<'a>(
-    by_id: &BTreeMap<&'a str, &'a ReportCategory>,
-) -> BTreeMap<&'a str, Option<&'a str>> {
-    let mut parents: BTreeMap<&str, Option<&str>> = by_id
-        .iter()
-        .map(|(id, c)| {
-            (
-                *id,
-                c.parent_id
-                    .as_deref()
-                    .filter(|p| by_id.get(p).is_some_and(|q| q.kind == c.kind)),
-            )
-        })
-        .collect();
-    // Settled: known to reach a root. Walk up from each unsettled category; a walk either
-    // reaches a settled category or a root (settle the path), or comes back on itself (a
-    // cycle: cut it at its smallest member, then settle the path).
-    let mut settled: BTreeSet<&str> = BTreeSet::new();
-    for &start in by_id.keys() {
-        let mut path: Vec<&str> = Vec::new();
-        let mut on_path: BTreeSet<&str> = BTreeSet::new();
-        let mut cur = Some(start);
-        while let Some(id) = cur {
-            if settled.contains(id) {
-                break;
-            }
-            if !on_path.insert(id) {
-                let at = path.iter().position(|p| *p == id).unwrap_or(0);
-                let cut = path[at..]
-                    .iter()
-                    .copied()
-                    .min_by_key(|m| sibling_key(&by_id[m]))
-                    .unwrap_or(id);
-                parents.insert(cut, None);
-                break;
-            }
-            path.push(id);
-            cur = parents[id];
-        }
-        settled.extend(path);
-    }
-    parents
 }

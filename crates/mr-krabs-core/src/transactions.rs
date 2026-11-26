@@ -5,8 +5,9 @@
 use std::collections::BTreeMap;
 
 use mrk_domain::{
-    AccountInfo, DomainError, EntryKind, JournalEntry, LedgerContext, Leg, LegStatus, NewTx,
-    Posting, StoredLeg, TxType, classify, ensure_unlocked, plan_update, roles, validate_civil_date,
+    AccountInfo, DomainError, EntryKind, JournalEntry, LedgerContext, Leg, LegField, LegStatus,
+    NewTx, Posting, StoredLeg, TxType, classify, ensure_unlocked, plan_update, roles,
+    validate_civil_date,
 };
 use mrk_money::Money;
 use mrk_store::{EntryFilter, EntryRow, PostingRow, ScopeFilter, Visibility};
@@ -128,7 +129,10 @@ impl App {
             let ctx = self.ledger_context(&c.entry.postings())?;
             let plan = plan_update(&legs, &c.tx, &ctx).map_err(|e| tx_error(Some(&input), e))?;
             if !plan.counter_leg.changes.is_empty() {
-                self.check_category(&plan.entry)?;
+                // An entry already in a category archived since keeps it (REQ-18): only a
+                // new target must be unarchived.
+                let retargeted = plan.counter_leg.changes.contains(&LegField::Target);
+                self.check_category(&plan.entry, retargeted)?;
             }
             let vis = self.visibility(&plan.entry.postings())?;
             self.store.write(|w| {
@@ -195,7 +199,7 @@ impl App {
             journal
                 .validate(&self.ledger_context(&journal.postings())?)
                 .map_err(|e| tx_error(None, e))?;
-            self.check_category(&journal)?;
+            self.check_category(&journal, true)?;
             self.set_deleted(&entry, &legs, false)
         })
     }
@@ -312,7 +316,7 @@ impl App {
         entry
             .validate(&self.ledger_context(&postings)?)
             .map_err(|e| tx_error(input, e))?;
-        self.check_category(entry)?;
+        self.check_category(entry, true)?;
         let rows: Vec<PostingRow> = postings
             .iter()
             .map(|p| posting_row(new_id(), &row.id, p, LegStatus::Cleared))
@@ -357,8 +361,9 @@ impl App {
         Ok(ctx)
     }
 
-    /// An expense or income posts to a live, unarchived category of its own kind.
-    fn check_category(&self, entry: &JournalEntry) -> Result<(), ApiError> {
+    /// An expense or income posts to a live category of its own kind; with `refuse_archived`,
+    /// one not archived itself or through an ancestor (REQ-18).
+    fn check_category(&self, entry: &JournalEntry, refuse_archived: bool) -> Result<(), ApiError> {
         let Leg::Category(id) = &entry.counter_leg.leg else {
             return Ok(());
         };
@@ -376,7 +381,7 @@ impl App {
                         "wrongKind",
                         format!("the category is not an {expected} category"),
                     ))
-                } else if c.is_archived {
+                } else if refuse_archived && self.category_archived_in_effect(id)? {
                     Err(field_error(
                         ErrorCode::Validation,
                         "categoryId",

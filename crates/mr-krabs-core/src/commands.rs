@@ -12,9 +12,8 @@ use serde_json::Value;
 use crate::api::{
     AccountInput, AccountListQuery, BreakdownDto, BudgetCellDto, BudgetCopyInput, BudgetMatrixDto,
     BudgetMatrixQuery, BudgetSetInput, CalendarDto, CashFlowDto, CashFlowQuery,
-    CategoryArchiveInput, CategoryDeleteInput, CategoryDto, CategoryInput, CategoryMoveInput,
-    CategoryTreeQuery, CategoryUpdateInput, HouseholdInput, MonthCalendarQuery, NewTxInput,
-    SpendingQuery, TxQuery,
+    CategoryArchiveInput, CategoryDeleteInput, CategoryInput, CategoryMoveInput, CategoryTreeQuery,
+    CategoryUpdateInput, HouseholdInput, MonthCalendarQuery, NewTxInput, SpendingQuery, TxQuery,
 };
 use crate::support::command;
 use crate::{ApiError, App, ErrorCode};
@@ -191,32 +190,6 @@ pub fn dispatch(app: &mut App, name: &str, args: Value) -> Result<Value, ApiErro
 /// report-commands) replaces the body and may move the method next to the rest of `App`,
 /// keeping the signature the shells and bindings rely on.
 impl App {
-    pub fn category_create(&mut self, _input: CategoryInput) -> Result<CategoryDto, ApiError> {
-        command("category_create", || {
-            Err(ApiError::not_implemented("category_create"))
-        })
-    }
-    pub fn category_update(
-        &mut self,
-        _input: CategoryUpdateInput,
-    ) -> Result<CategoryDto, ApiError> {
-        command("category_update", || {
-            Err(ApiError::not_implemented("category_update"))
-        })
-    }
-    pub fn category_move(&mut self, _input: CategoryMoveInput) -> Result<CategoryDto, ApiError> {
-        command("category_move", || {
-            Err(ApiError::not_implemented("category_move"))
-        })
-    }
-    pub fn category_archive(
-        &mut self,
-        _input: CategoryArchiveInput,
-    ) -> Result<CategoryDto, ApiError> {
-        command("category_archive", || {
-            Err(ApiError::not_implemented("category_archive"))
-        })
-    }
     /// `null` when the amount was empty or zero and the line was deleted (or absent).
     pub fn budget_set(
         &mut self,
@@ -445,12 +418,12 @@ mod tests {
     }
 
     /// REQ-32: until their slices land, M2 commands accept their documented arguments and
-    /// answer `NOT_IMPLEMENTED` (`category_delete` is wired for real, below).
+    /// answer `NOT_IMPLEMENTED` (the `category_*` commands are wired for real; K1).
     #[test]
     fn m2_stubs_accept_their_arguments_and_answer_not_implemented() {
         let mut app = household_app();
         for (name, args) in m2_calls() {
-            if name == "category_delete" {
+            if name.starts_with("category_") {
                 continue;
             }
             let e = dispatch(&mut app, name, args).unwrap_err();

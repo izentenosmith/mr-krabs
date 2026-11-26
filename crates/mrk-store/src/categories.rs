@@ -63,6 +63,8 @@ pub struct CategoryRow {
     pub parent_id: Option<String>,
     pub kind: String,
     pub name: String,
+    /// `mrk_domain::normalize_name(name)`; live siblings' keys are unique.
+    pub name_key: String,
     pub icon: Option<String>,
     pub is_archived: bool,
     pub sort_order: i64,
@@ -91,7 +93,8 @@ pub struct CategoryMergeWrite {
     pub sum_budget_lines: Vec<(String, i64, String)>,
 }
 
-const CATEGORY_COLS: &str = "id, parent_id, kind, name, icon, is_archived, sort_order, deleted";
+const CATEGORY_COLS: &str =
+    "id, parent_id, kind, name, name_key, icon, is_archived, sort_order, deleted";
 
 fn category_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<CategoryRow> {
     Ok(CategoryRow {
@@ -99,10 +102,11 @@ fn category_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<CategoryRow> {
         parent_id: r.get(1)?,
         kind: r.get(2)?,
         name: r.get(3)?,
-        icon: r.get(4)?,
-        is_archived: r.get(5)?,
-        sort_order: r.get(6)?,
-        deleted: r.get(7)?,
+        name_key: r.get(4)?,
+        icon: r.get(5)?,
+        is_archived: r.get(6)?,
+        sort_order: r.get(7)?,
+        deleted: r.get(8)?,
     })
 }
 
@@ -275,6 +279,22 @@ impl Store {
 }
 
 impl Write<'_> {
+    /// Inserts a user category and logs it (ADR-0010).
+    pub fn insert_category(&self, c: &CategoryRow) -> Result<()> {
+        self.insert("category", &c.id, Visibility::Household, &category_cols(c))
+    }
+
+    /// Writes a category's editable fields (parent, name, icon, archive flag, position) and
+    /// logs the ones that changed; kind and deletion are never changed here.
+    pub fn update_category(&self, c: &CategoryRow) -> Result<()> {
+        self.update(
+            "category",
+            &c.id,
+            Visibility::Household,
+            &category_cols(c)[2..],
+        )
+    }
+
     /// Inserts the default categories and accounts. Idempotent: a row whose id exists, live
     /// or deleted, is left alone, so deleted seed rows are never resurrected (ADR-0008). Seeds are never logged.
     pub fn seed_defaults(
@@ -326,6 +346,20 @@ impl Write<'_> {
         }
         Ok(report)
     }
+}
+
+/// `id`, `kind`, then the editable columns.
+fn category_cols(c: &CategoryRow) -> [crate::write::Col<'_>; 8] {
+    [
+        ("id", &c.id),
+        ("kind", &c.kind),
+        ("parent_id", &c.parent_id),
+        ("name", &c.name),
+        ("name_key", &c.name_key),
+        ("icon", &c.icon),
+        ("is_archived", &c.is_archived),
+        ("sort_order", &c.sort_order),
+    ]
 }
 
 /// Rows of `table` whose `category_id` is `category`, each with whether a sibling row (same
