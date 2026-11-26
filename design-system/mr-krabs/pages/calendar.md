@@ -11,7 +11,7 @@ MASTER and budget.md's **Report grid (shared)**.
 Calendario                                          ‹ Noviembre 2026 ›
 ⓘ 1 movimiento en USD sin convertir en noviembre · No se incluyen en los totales.
 ┌────────────────────┬──────────┬──────────┬─── … ───┬────────────┬────────────┐
-│ Categoría          │   1  L   │   2  M   │         │   30  L    │      Total │
+│ Categoría          │   1  D   │   2  L   │         │   30  L    │      Total │
 ├────────────────────┼──────────┼──────────┼─── … ───┼────────────┼────────────┤
 │ ▾ Gastos           │          │          │         │            │            │  section
 │   ▾ Comida         │  $12.000 │          │         │            │   $655.000 │  group
@@ -46,7 +46,8 @@ Calendario                                          ‹ Noviembre 2026 ›
 - **Cells:** `rows[i].days[d].display` as received; an empty day (`minor` 0) is blank, so the
   month reads like the spreadsheet. The Total column shows `rows[i].total`.
 - **Day totals:** two summary rows, "Gastos del día" (`dayTotals.expense[d]`) and "Ingresos del
-  día" (`dayTotals.income[d]`), `font-medium`, blank when zero. The UI never sums.
+  día" (`dayTotals.income[d]`), `font-medium`, blank when zero; a negative "Gastos del día" is a
+  credit (shared rule). The UI never sums.
 
 ## Quick-add (DEC-29 Q6)
 
@@ -56,7 +57,9 @@ Calendario                                          ‹ Noviembre 2026 ›
   unchanged. The cell passes its row's `category.kind` and `category.id` (group rows included:
   any category can take transactions, FR-BU-01); an archived row passes the date and kind only
   (archived categories leave every picker, DEC-30 Q10).
-- The **day header's** button opens the dialog with that date only.
+- The **day header's** button opens the dialog with that date only. The header row is in the
+  grid's roving set (shared keyboard), so ↑ from the first row reaches it; Enter on a header
+  activates its button.
 - Accessible names start with the cell's content: "{display}, agregar movimiento el {día} de
   {mes}, {categoría}", or "Vacío, agregar movimiento el …" for a blank day; the header button
   is "Agregar movimiento el {día} de {mes}". Hover and focus show a ghost `Plus` (12px,

@@ -27,13 +27,16 @@ Categorías                                [Gastos | Ingresos]   [+ Nueva catego
 
 ## The tree
 
+- The page loads `category_tree` without a kind filter and shows the selected kind's roots
+  (filtering for display only), so it knows every sibling Rust orders.
 - A `role="treegrid"` (rows have actions, so not a `tree`) with four columns: the name
   (`role="rowheader"`) and one gridcell per action. No section rows (one kind per tab).
 - **Rows:** 36px, `text-sm`, in `category_tree`'s nesting and order (X-16: orphan and cycle rows
   come back as roots and are shown as roots). `aria-level` is the row's nesting depth + 1 in
   that tree; `aria-setsize`/`aria-posinset` count **visible** siblings (archived rows hidden by
   the toggle don't count). Parents start expanded; `aria-expanded`, the decorative chevron and
-  indentation `12px + 16px × (aria-level − 1)` as the shared rule. Clicking the chevron toggles.
+  indentation `12px + 16px × (aria-level − 1)` as the shared rule. Clicking the chevron toggles;
+  clicking the name only focuses the row (a departure from the shared click-to-toggle).
 - **Action cells:** each holds one ghost icon button, visible on row hover or when the row has
   focus: `Plus` "Nueva subcategoría en {name}", `Pencil` "Renombrar {name}", and
   `MoreHorizontal` "Más acciones para {name}", a menu with "Mover…", "Archivar" or
@@ -44,7 +47,9 @@ Categorías                                [Gastos | Ingresos]   [+ Nueva catego
   own `isArchived` is true or an ancestor's is (DEC-30 Q10: archiving cascades for pickers).
   "Desarchivar" sits on a row whose own `isArchived` is true; a row archived only through an
   ancestor offers "Desarchivar «{ancestro}»" instead, which unarchives that ancestor. Archived
-  rows offer only that and "Eliminar…".
+  rows offer only that and "Eliminar…": their `Plus` and `Pencil` cells are empty and skipped by
+  roving focus, and Enter on their name does nothing. (Cross-slice ask to K1: archive must
+  cascade at read time so unarchiving the ancestor restores its subtree.)
 - Categories show no icon in M2's UI; `category_update`'s `icon` is not edited here.
 
 ## Create
@@ -76,7 +81,8 @@ everywhere at once, past periods included (FR-BU-07).
 
 - **Keyboard:** ⌥↑ / ⌥↓ on a focused name cell move the row one place among its siblings
   (`category_move {id, parentId, index}`, `index` = the row's position in the resulting sibling
-  list, 0-based). At the first or last sibling it does nothing. After Rust acknowledges, the
+  list as `category_tree` returns it unfiltered — archived siblings and, at the root, the other
+  kind's roots included — 0-based). ⌥↓ therefore moves past the next **visible** sibling. At the first or last sibling it does nothing. After Rust acknowledges, the
   tree refetches, focus stays on the row, and a visually hidden `aria-live="polite"` region says
   "{name}: posición {n} de {m}". A failure says nothing there and shows `toast.error` (or the
   not-available toast). No drag and drop in M2.
@@ -129,7 +135,7 @@ in history and reports. "Desarchivar" restores without a toast.
 The shared treegrid keys (budget.md), with these page-specific departures, stated as overrides:
 - **Enter on a name cell renames** (instead of toggling); toggling is → / ← and the chevron.
 - **⌥↑ / ⌥↓** reorder (above).
-- **⌘Z** runs the visible archive toast's `Deshacer`, if one is showing; otherwise it does
-  nothing on this page (category deletes cannot be undone).
+- **⌘Z** keeps its global meaning (MASTER §5: undo the last delete or import); an archive whose
+  toast is still showing counts as that last undoable action. Category deletes cannot be undone.
 - Every row shortcut **ignores key events that come from an input** (the inline rename), so
   text editing keeps the macOS keys. There is no delete shortcut.

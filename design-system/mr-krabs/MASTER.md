@@ -60,7 +60,7 @@ mode (lowest: warning on white, 5.0:1). Re-check when adding a token.
 | Transfer between own accounts | `muted-foreground`, `⇄` icon, no sign — never styled as spending (FR-TX-02) |
 | Over budget | `destructive` + alert icon + "excedido" text |
 | Out-of-range bill | `warning` + alert icon + "Fuera de rango" |
-| Report grids and tiles (M2) | `foreground` for every amount, `display` as received: the row's section or the tile's caption names the kind, so income is not `success` there. A credit (an expense category's negative actual) adds a visible `text-xs text-muted-foreground` "crédito" (`pages/budget.md`). |
+| Report grids and tiles (M2) | `foreground` for every plain amount, `display` as received (state cells keep their state color: `VarianceCell`, "déficit"): the row's section or the tile's caption names the kind, so income is not `success` there. A credit (an expense category's negative actual) adds a visible `text-xs text-muted-foreground` "crédito" (`pages/budget.md`). |
 
 ### Status & scope badges (icon + label, always)
 
@@ -146,7 +146,7 @@ Minimum 12px anywhere. Body is 14px — between macOS native (13) and the web mi
 | ⌘1 / ⌘2 / ⌘3 | Lens: Personal / Household / Combined |
 | ⌘F | Focus search (on views that have one) |
 | ↑ ↓ / Enter / Esc | Move in tables / open / close |
-| ⌘Z | Undo last delete or import (FR-TX-08, FR-IM-05) |
+| ⌘Z | Undo last delete, import or archive (FR-TX-08, FR-IM-05) |
 
 Focus ring always visible: `ring-[3px] ring-ring/50` (Tailwind `focus-visible:`).
 
@@ -155,7 +155,7 @@ Focus ring always visible: `ring-[3px] ring-ring/50` (Tailwind `focus-visible:`)
 ### 5.1 Accounts sidebar
 - Section header "Cuentas" (`text-xs font-medium text-muted-foreground`) with a ghost icon
   button `Plus` (`aria-label` "Nueva cuenta"). Not a primary button (the view's primary is
-  Transacciones' "Nuevo", §5).
+  the view's own, §5).
 - Accounts are grouped by kind, in this order, empty groups hidden; group caption `text-xs
   text-muted-foreground`:
   1. Bancos y efectivo — checking, cuenta_vista, savings, cash
@@ -199,7 +199,8 @@ Focus ring always visible: `ring-[3px] ring-ring/50` (Tailwind `focus-visible:`)
   ghost button (`text-sm font-medium`, min-width 144px, centered; month name and year in
   the UI language, e.g. "Noviembre 2026"), and `ChevronRight` ("Mes siguiente" / "Año
   siguiente"). The label button's accessible name is "Ir al período actual ({período})"; it
-  is disabled while the current period is shown. A visually hidden `aria-live="polite"`
+  is `aria-disabled` (never the native `disabled`, which would drop focus) while the current
+  period is shown. A visually hidden `aria-live="polite"`
   region announces the new period after every step. Month and weekday names come from the
   i18n catalogue (es-CL and en), never from hand-written formatting.
 - **Shared period:** one month, kept per window across Presupuesto, Calendario and Resumen.
@@ -268,7 +269,7 @@ Lists over 50 rows are virtualized (NFR-05).
   - In a dialog it is the form-level message, and the form stays open with its values.
 - **Errors from an action outside a form** (delete, restore, loading more rows): Sonner `toast.error` with the same per-code text as §7.1's form-level error.
 - **Not yet available from an action outside a form** (an in-cell edit, a copy, a keyboard move answering `NOT_IMPLEMENTED`): Sonner default toast (never `toast.error`) with the `Hourglass` icon and "Aún no disponible" + "Esta función llega en una próxima versión."
-- **Cell error popover** (an in-cell edit answering `VALIDATION`): a popover anchored under the cell (`bg-popover`, border, `shadow-md`, `text-xs`) with `CircleAlert` + the field message in `text-destructive`. It never takes focus (the input keeps it) and is announced once through `role="alert"`; the input has `aria-invalid` (no `aria-describedby`, which would announce it twice). It closes when the edit is committed, cancelled, or its text changes.
+- **Cell error popover** (an in-cell edit answering `VALIDATION`): a popover anchored under the cell (`bg-popover`, border, `shadow-md`, `text-xs`) with `CircleAlert` + the field message in `text-destructive`. It never takes focus (the input keeps it). The input has `aria-invalid` and `aria-describedby` pointing at it (as §7.1), so the message is read whenever focus returns to the input; the popover is `role="alert"` only when focus never left the input (Enter commit), so it is announced once either way. It closes when the edit is committed, cancelled, or its text changes.
 - **Undo toast:** Sonner default toast. The text says what happened ("Transacción eliminada"), with one `Deshacer` action and an 8 s duration.
 
 ## 8. Charts
@@ -338,7 +339,9 @@ the app's dark mode is `prefers-color-scheme`). Tailwind utilities are `fill-cha
 **What guards it.** `apps/desktop/src/chart-palette.test.ts` fails when a chart token is
 missing in either mode, is not `#rrggbb`, is below 3:1 on `card`/`background`/`popover`, equals
 any status, brand, primary or scope color, is within OKLab ΔE 15 of a status or brand color or
-of another series, or is not mapped in `@theme`. The colorblind (protan/deutan) figures above
+of another series, is not mapped in `@theme`, or when any chart or surface token is declared
+anywhere but the light `:root` rule and the dark block's `:root` rule (comments ignored), or
+an extra `chart*` token or `@theme` chart color exists. The colorblind (protan/deutan) figures above
 were measured once with the dataviz palette validator; re-measure and update this table when a
 value changes.
 

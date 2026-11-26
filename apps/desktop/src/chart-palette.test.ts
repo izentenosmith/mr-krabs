@@ -48,9 +48,11 @@ const darkStart = css.indexOf("@media (prefers-color-scheme: dark)");
 const themeStart = css.indexOf("@theme inline");
 
 const lightOwn = declarations(section(":root {", "}"));
-const darkOwn = declarations(
-  section("@media (prefers-color-scheme: dark)", "@theme inline").replace(/^[^{]*\{[^{]*\{/, "").split("}")[0] ?? "",
-);
+/** The dark media block's contents, after its opening `{`. */
+const darkBlock = section("@media (prefers-color-scheme: dark)", "@theme inline").replace(/^[^{]*\{/, "");
+/** Its first rule: the dark `:root`. */
+const darkRule = darkBlock.split("}")[0] ?? "";
+const darkOwn = declarations(darkRule);
 const theme = declarations(section("@theme inline", "@layer base"));
 const light = lightOwn;
 const dark = { ...lightOwn, ...darkOwn };
@@ -112,8 +114,26 @@ describe("index.css structure", () => {
   });
 
   it("defines no chart token beyond chart-1..3", () => {
-    const names = Object.keys({ ...lightOwn, ...darkOwn }).filter((n) => /^chart-\d+$/.test(n));
+    const names = Object.keys({ ...lightOwn, ...darkOwn }).filter((n) => /^chart/i.test(n));
     expect(names.sort()).toEqual(series);
+  });
+
+  // Every chart or surface declaration in the whole file sits in the two parsed rules, so no
+  // later rule, extra dark rule or other selector can override what this file checks.
+  it.each(["chart", ...surfaces])("declares --%s… only in the light and dark :root rules", (prefix) => {
+    const pattern = new RegExp(`--${prefix}[a-z0-9-]*\\s*:`, "gi");
+    const count = (text: string) => (text.match(pattern) ?? []).length;
+    const inRules = count(section(":root {", "}")) + count(darkRule);
+    expect(count(css.replace(section("@theme inline", "@layer base"), ""))).toBe(inRules);
+  });
+
+  it("maps no chart color in @theme beyond chart-1..3", () => {
+    const names = Object.keys(theme).filter((n) => /^color-chart/i.test(n));
+    expect(names.sort()).toEqual(series.map((s) => `color-${s}`));
+  });
+
+  it("reads the dark tokens from a :root rule", () => {
+    expect(darkBlock.trimStart().startsWith(":root")).toBe(true);
   });
 
   it.each(series)("maps --color-%s to var(--%s) in @theme", (name) => {

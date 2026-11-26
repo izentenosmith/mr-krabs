@@ -52,8 +52,8 @@ The caption names the kind, so tiles follow MASTER §2's "Report grids" rule: no
 | Tile | Value | Extra |
 |---|---|---|
 | Ingresos | `income` | — |
-| Gastos | `expense` | — |
-| Ahorro e inversión | `saved` | second line `text-xs text-muted-foreground` "{tasa} de los ingresos" with `savingsRate.display` (a `PercentDto`), or "—" when `savingsRate` is `null` (no income) |
+| Gastos | `expense` | a negative `minor` is a credit (shared rule: visible "crédito") |
+| Ahorro e inversión | `saved` | second line `text-xs text-muted-foreground` "{tasa} de los ingresos" with `savingsRate.display` (a `PercentDto`); when `savingsRate` is `null` (no income) the whole line is "—" |
 | Flujo libre | `freeCashFlow` | negative `minor`: `destructive` + `CircleAlert` + visible "déficit" |
 
 Percentages arrive as `PercentDto {bp, display}` formatted in Rust (X-17); the UI shows
@@ -64,8 +64,11 @@ nexus if the owner wants it.
 ## Cash flow chart
 
 - **Form:** one bar group per month on a shared zero baseline (MASTER §8): **Ingresos**
-  (`chart-1`) above zero; **Gastos** (`chart-2`) and **Ahorro e inversión** (`chart-3`)
-  stacked below zero, Gastos next to the baseline. **Flujo libre** is a line in `foreground`
+  (`chart-1`), **Gastos** (`chart-2`) and **Ahorro e inversión** (`chart-3`) share one stack with
+  **sign-split stacking** (Recharts `stackOffset="sign"`): positive coordinates stack up from
+  zero, negative ones down, so Gastos sits next to the baseline below zero with Ahorro under
+  it, and a positive Ahorro (a net withdrawal) stacks above Ingresos instead of overlapping
+  Gastos. **Flujo libre** is a line in `foreground`
   (2px) with 8px dot markers ringed 2px in `card`: a different mark, so it never depends on
   color.
 - **Plot values (X-17):** each month's `plot: CashFlowPlotDto {income, expense, saved,
@@ -84,18 +87,23 @@ nexus if the owner wants it.
 - **Keyboard and screen reader:** the plot is `role="group"` with `aria-roledescription` and
   `aria-label` from the i18n catalogue (es-CL "gráfico"), one tab stop (`tabindex="0"`, focus
   ring). On focus the focused month is the shown month. ← → move the focused month,
-  Home/End jump to the ends, Enter makes the focused month the shown month (as the stepper
-  would), Esc hides the tooltip. A visually hidden `aria-live="polite"` region announces the
-  tooltip's text on every move. The `aria-label` describes the shown month: "Flujo de caja de
+  Home/End (⌘←/⌘→) jump to the ends, Esc hides the tooltip. Enter makes the focused month the
+  shown month (as the stepper would): the card keeps the previous data on screen while the new
+  window loads (no "Cargando…" swap), focus stays on the plot, and the focused month stays the
+  same month (now the last band). A visually hidden `aria-live="polite"` region announces the
+  tooltip's text on every keyboard move (the stepper's live region stays silent for this
+  change). The `aria-label` describes the shown month: "Flujo de caja de
   {mes inicial} a {mes final}. {mes}: ingresos {x}, gastos {y}, ahorro e inversión {z}, flujo
-  libre {w}. Usa las flechas para recorrer los meses o abre la vista de tabla." Hover moves the
-  focused month too. If a screen reader keeps the arrow keys, the table view is the path.
+  libre {w}. Usa las flechas para recorrer los meses o abre la vista de tabla." Hover shows the
+  tooltip for the hovered band without moving the keyboard's focused month and without
+  announcing. If a screen reader keeps the arrow keys, the table view is the path.
 - **Tooltip** (`bg-popover`, border, `shadow-md`, `text-xs`): month and year, then the four
   values with their swatches, and the savings rate (or "—").
 - **Legend:** always visible above the plot, left-aligned: 10px rounded swatch (a short line
   with a dot for Flujo libre) + label in `text-xs text-foreground`.
 - **Table view:** a `ToggleGroup` "Gráfico | Tabla" in the card header swaps the plot for a
-  table of the same series: rows = months (oldest first, `th scope="row"`), columns Mes ·
+  table of the same series, with a visually hidden `<caption>` "Flujo de caja, {mes inicial} a
+  {mes final}": rows = months (oldest first, `th scope="row"`), columns Mes ·
   Ingresos · Gastos · Ahorro e inversión · Flujo libre · Tasa de ahorro; amounts right-aligned
   per MASTER §3; the choice is per window.
 
@@ -108,8 +116,10 @@ nexus if the owner wants it.
   (visually hidden) Grupo · Monto · Porcentaje:
   - **Grupo:** `<th scope="row">`, `text-sm`, 180px, truncate with the full name in `title`;
     its content is a link (shared drill-down, `month`) whose text is the group name and whose
-    accessible name adds ", ver gastos de {mes}".
-  - **Monto:** the bar, then `amount.display` (right-aligned, `tabular-nums`).
+    accessible name adds ", ver gastos de {mes}" — a stated departure from the shared
+    amount-first name, because here the amount has its own cell.
+  - **Monto:** the bar, then `amount.display` (right-aligned, `tabular-nums`), plus "crédito"
+    when negative (shared rule).
   - **Porcentaje:** `share.display` (a `PercentDto`), or "—" when `share` is `null`
     (`text-muted-foreground`).
 - **The bar** (decorative, `aria-hidden`) is `chart-2` (the "Gastos" color, so color follows the
