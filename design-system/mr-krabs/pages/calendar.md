@@ -60,8 +60,9 @@ Calendario                                          ‹ Noviembre 2026 ›
 - The **day header's** button opens the dialog with that date only. The header row is in the
   grid's roving set (shared keyboard), so ↑ from the first row reaches it; Enter on a header
   activates its button.
-- Accessible names start with the cell's content: "{display}, agregar movimiento el {día} de
-  {mes}, {categoría}", or "Vacío, agregar movimiento el …" for a blank day; the header button
+- Accessible names start with the cell's content: "{display}[ crédito], agregar movimiento el
+  {día} de {mes}, {categoría}" (crédito as budget.md's credit rule), or "Vacío, agregar
+  movimiento el …" for a blank day; the header button
   is "Agregar movimiento el {día} de {mes}". Hover and focus show a ghost `Plus` (12px,
   `muted-foreground`) at the cell's top-left; the amount stays right-aligned.
 - On save the dialog closes as it does in Transacciones, the grid refetches and focus returns
@@ -70,9 +71,9 @@ Calendario                                          ‹ Noviembre 2026 ›
 ## Drill-down (shared rule)
 
 Day cells do **not** drill down (they quick-add). Drill-down links are: a row's **Total** cell
-(the row's `categoryId` and `month`, name "{display}, ver movimientos de {categoría},
-{mes}") and a **day-total** cell (`day`, all categories, name "{display}, ver movimientos del
-{día} de {mes}").
+(the row's `categoryId` and `month`, name "{display}[ crédito], ver movimientos de
+{categoría}, {mes}") and a **day-total** cell (`day`, all categories, name "{display}[ crédito],
+ver movimientos del {día} de {mes}"; crédito only on a negative "Gastos del día").
 
 ## States (MASTER §7.2)
 

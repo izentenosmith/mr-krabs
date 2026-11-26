@@ -36,7 +36,8 @@ Categorías                                [Gastos | Ingresos]   [+ Nueva catego
   that tree; `aria-setsize`/`aria-posinset` count **visible** siblings (archived rows hidden by
   the toggle don't count). Parents start expanded; `aria-expanded`, the decorative chevron and
   indentation `12px + 16px × (aria-level − 1)` as the shared rule. Clicking the chevron toggles;
-  clicking the name only focuses the row (a departure from the shared click-to-toggle).
+  clicking the name focuses the **name cell** (a departure from the shared click-to-toggle), so
+  Enter then renames and ⌥↑ / ⌥↓ reorder. No header row.
 - **Action cells:** each holds one ghost icon button, visible on row hover or when the row has
   focus: `Plus` "Nueva subcategoría en {name}", `Pencil` "Renombrar {name}", and
   `MoreHorizontal` "Más acciones para {name}", a menu with "Mover…", "Archivar" or
@@ -79,17 +80,23 @@ everywhere at once, past periods included (FR-BU-07).
 
 ## Move and reorder
 
-- **Keyboard:** ⌥↑ / ⌥↓ on a focused name cell move the row one place among its siblings
-  (`category_move {id, parentId, index}`, `index` = the row's position in the resulting sibling
-  list as `category_tree` returns it unfiltered — archived siblings and, at the root, the other
-  kind's roots included — 0-based). ⌥↓ therefore moves past the next **visible** sibling. At the first or last sibling it does nothing. After Rust acknowledges, the
-  tree refetches, focus stays on the row, and a visually hidden `aria-live="polite"` region says
-  "{name}: posición {n} de {m}". A failure says nothing there and shows `toast.error` (or the
-  not-available toast). No drag and drop in M2.
+- **Keyboard:** ⌥↑ / ⌥↓ on a focused row or its name cell move the row past the previous/next
+  **visible** sibling (`category_move {id, parentId, index}`, `index` = the row's 0-based
+  position in the resulting sibling list as `category_tree` returns it unfiltered, archived
+  siblings included). With no visible sibling in that direction it does nothing. After Rust
+  acknowledges, the tree refetches, focus stays where it was on the row, and a visually hidden
+  `aria-live="polite"` region says "{name}: posición {n} de {m}", counted over visible siblings
+  (as `aria-posinset` / `aria-setsize`). A failure says nothing there and shows `toast.error`
+  (or the not-available toast). No drag and drop in M2.
+- **Root siblings:** this page assumes the root sibling list for `index` is every root
+  `category_tree` returns, both kinds (cross-slice ask to C0/K1: define `category_move`'s
+  sibling set at the root, per kind or all roots; if per kind, `index` counts only this kind's
+  roots).
 - **"Mover…"** opens a `Dialog`: "Dentro de" ("Nivel superior (grupo)" and the kind's live
   categories; the category itself and its descendants are not offered) and "Posición" (native
-  `<select>`: "Al principio", "Después de {hermano}" for each other sibling under the chosen
-  parent, default "Al final"). "Mover" (primary). A rejected move (`VALIDATION`) is the
+  `<select>`: "Al principio", "Después de {hermano}" for each other **visible** sibling under
+  the chosen parent, default "Al final"; `index` is then the unfiltered position just after
+  that sibling, or 0, or the unfiltered count). "Mover" (primary). A rejected move (`VALIDATION`) is the
   form-level message.
 
 ## Archive and unarchive

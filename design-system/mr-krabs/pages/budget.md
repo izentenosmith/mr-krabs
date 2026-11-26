@@ -69,7 +69,9 @@ formats them, sign included.)
   corner cell z 11. A sticky cell takes its row's background (`bg-card`, or `bg-muted` on a
   group row). The scroll container sets `scroll-padding` to the sticky header height, first
   column width and (calendar) last column and bottom rows, so a focused cell is never hidden
-  under a sticky one (WCAG 2.4.11).
+  under a sticky one (WCAG 2.4.11). Sticky cells are always in view, so focusing one never
+  scrolls. Focusing a row scrolls only vertically (`focus({ preventScroll: true })`, then
+  scroll the row into view on the block axis): the horizontal position never jumps.
 - **Group rows** (`category.isGroup`): `bg-muted`, `font-medium`; their amounts are roll-ups
   (own line + every descendant, DEC-30 Q9).
 - **Archived categories:** a row whose `category.isArchived` is true is shown archived: name
@@ -83,12 +85,14 @@ formats them, sign included.)
   recomputed or re-signed. In a report grid every amount is `foreground`: the section row
   names the kind, so the income/expense colors of MASTER §2 do not apply here (MASTER §2,
   "Report grids").
-- **Credit:** in an expense row (`category.kind = "expense"`) — and in any expense total
-  (calendar "Gastos del día", the dashboard's Gastos tile and group rows) — an amount whose
-  `minor` is negative (refunds larger than spending) shows its `display` followed by a visible
+- **Credit:** an **actual** in an expense row (`category.kind = "expense"`: Real, a month or
+  day cell, Total) — and any expense total (calendar "Gastos del día", "Total gastos" actuals,
+  the dashboard's Gastos tile and group rows) — whose `minor` is negative (refunds larger than
+  spending) shows its `display` followed by a visible
   `text-xs text-muted-foreground` "crédito", with the tooltip "Las devoluciones superaron los gastos".
   It is neither `success` nor `destructive`: nothing is wrong and it is not income. In an
-  income row a negative actual is shown as received, with no label.
+  income row a negative actual is shown as received, with no label. Planificado and Diferencia
+  never take it: a negative Diferencia is `VarianceCell`'s "excedido".
 
 ### Drill-down
 
@@ -118,11 +122,18 @@ The grid follows the APG treegrid with **row and cell focus**; it is one tab sto
 - **Rows:** a focused row announces its level, position and expanded state. On a row, →
   expands a collapsed row or else moves to its first cell; ← collapses an expanded row, else
   moves to its parent row, and on a level-1 row does nothing.
-- **Cells:** ← on a row's first cell moves to the row; otherwise ← → move one cell. ↑ ↓ move
-  to the same column in the previous/next visible row; the grid remembers the column across
-  rows whose cell there is empty (section rows), so walking down a column never drifts.
-- **Header row:** part of the roving set: ↑ from the first body row reaches it, so buttons
-  inside column headers (calendar quick-add) are reachable.
+- **Cells:** ← on a row's first cell moves to the row; otherwise ← → move to the previous/next
+  cell that can take focus. **Empty cells never take focus** (a section row's cells after its
+  label, a page's empty action cells): ← → skip them, and ↑ ↓ move to the same column in the
+  nearest previous/next visible row whose cell there can take focus, skipping rows whose cell
+  is empty, so walking down a column never drifts. With no such row in that direction, focus
+  stays.
+- **Header row:** part of the roving set with **cell focus only** (it has no level or
+  expanded state, so it never takes row focus; ← on its first cell does nothing): ↑ from the
+  first body row reaches it, so buttons inside column headers (calendar quick-add) are
+  reachable. A grid without a header row (categories) stops ↑ at the first body row. Jumps to
+  "the first row" mean the first body row; after a refetch a focused header cell keeps its
+  column.
 - **Jumps:** Home/End or ⌘←/⌘→ to the row's first/last cell; Ctrl+Home/Ctrl+End or ⌘↑/⌘↓ to
   the first/last row (macOS keyboards have no Home/End without Fn).
 - **Enter:** follows a link; on a row or row header toggles it. Pages add their own Enter
@@ -171,27 +182,34 @@ follow-up for the nexus.
 ## Planificado cells (editing)
 
 - A gridcell holding a button. On a leaf it shows `months[m].planned` (blank when `minor` is
-  0). On a group it shows the roll-up but edits the group's **own** line, `ownPlanned[m]`, with
+  0). On a group it shows the roll-up (blank when its `minor` is 0) but edits the group's
+  **own** line, `ownPlanned[m]`, with
   a `text-xs text-muted-foreground` hint under the input: "Monto propio del grupo; el total
   suma sus subcategorías." Archived rows are editable too; if Rust rejects a line on an
   archived category, that is its `VALIDATION`.
 - **Accessible name:** "{display, or 'Sin monto'}, editar planificado de {categoría},
-  {mes}" (on a group: "{roll-up display}, editar monto propio de {categoría}, {mes}").
+  {mes}" (on a group: "{roll-up display, or 'Sin monto'}, editar monto propio de {categoría},
+  {mes}"): 'Sin monto' whenever the cell is blank.
 - **Start:** Enter, double-click or typing a digit. The cell becomes a `MoneyInput` (MASTER
   §7.1, `h-8`) seeded with the line it edits — `months[m].planned.display` on a leaf,
   `ownPlanned[m].display` on a group, blank when that `minor` is 0 — text selected; typing a
   digit replaces it. While editing, every key goes to the input (arrows, Home and End move the
   caret).
-- **Commit:** Enter (then focus moves to this column's cell in the next editable row, skipping
-  section and summary rows), Tab / Shift+Tab (then to the next/previous editable Planificado
-  cell — an override of "Tab leaves the grid" while editing), or blur. It sends `budget_set
-  {period, categoryId, scope, amount}` with the text as typed; empty or 0 deletes the line
-  (DEC-30 Q9). Text unchanged from the seed sends nothing. Esc cancels.
-- **Saving:** the input is read-only with `aria-busy`; no spinner. Saved: the matrix refetches
-  and the cell shows the new value; no toast.
+- **Commit:** Enter, Tab / Shift+Tab (an override of "Tab leaves the grid" while editing) or
+  blur sends `budget_set {period, categoryId, scope, amount}` with the text as typed; empty or 0
+  deletes the line (DEC-30 Q9). Text unchanged from the seed sends nothing and closes the input
+  (focus moves as on success). Esc cancels.
+- **Saving:** the input keeps focus, read-only with `aria-busy`; no spinner, and no other cell
+  can start an edit until Rust answers. Saved: the matrix refetches, the cell shows the new
+  value, no toast, and **only then** focus moves: after Enter to this column's cell in the
+  next editable row (the next visible category row: section and summary rows and the rows of
+  a collapsed group are skipped); after Tab / Shift+Tab to the next/previous visible
+  Planificado cell. Where there is none (the last or first editable row), focus stays on this
+  cell. After a blur commit focus is wherever the user put it.
 - **`VALIDATION`:** the input stays open with the typed text and has focus (it gets focus back
   after a blur commit), `aria-invalid`, `border-destructive`, and MASTER §7.2's cell error
-  popover. Committing the same text again sends nothing; editing it clears the error.
+  popover. Committing the same text again sends nothing and leaves the input, its error and
+  the popover as they are; editing the text clears the error and closes the popover.
 - **`NOT_IMPLEMENTED`:** the cell returns to its old value and MASTER §7.2's not-available
   toast shows; never `toast.error`.
 - **Any other error:** the cell returns to its old value and `toast.error` (MASTER §7.2).

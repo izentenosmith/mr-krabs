@@ -60,7 +60,7 @@ mode (lowest: warning on white, 5.0:1). Re-check when adding a token.
 | Transfer between own accounts | `muted-foreground`, `⇄` icon, no sign — never styled as spending (FR-TX-02) |
 | Over budget | `destructive` + alert icon + "excedido" text |
 | Out-of-range bill | `warning` + alert icon + "Fuera de rango" |
-| Report grids and tiles (M2) | `foreground` for every plain amount, `display` as received (state cells keep their state color: `VarianceCell`, "déficit"): the row's section or the tile's caption names the kind, so income is not `success` there. A credit (an expense category's negative actual) adds a visible `text-xs text-muted-foreground` "crédito" (`pages/budget.md`). |
+| Report grids and tiles (M2) | `foreground` for every plain amount, `display` as received (state cells keep their state color: `VarianceCell`, "déficit"): the row's section or the tile's caption names the kind, so income is not `success` there. A credit (a negative actual in an expense category, or a negative expense total; never a Planificado or Diferencia cell) adds a visible `text-xs text-muted-foreground` "crédito" (`pages/budget.md`). |
 
 ### Status & scope badges (icon + label, always)
 
@@ -146,7 +146,7 @@ Minimum 12px anywhere. Body is 14px — between macOS native (13) and the web mi
 | ⌘1 / ⌘2 / ⌘3 | Lens: Personal / Household / Combined |
 | ⌘F | Focus search (on views that have one) |
 | ↑ ↓ / Enter / Esc | Move in tables / open / close |
-| ⌘Z | Undo last delete, import or archive (FR-TX-08, FR-IM-05) |
+| ⌘Z | Undo: runs the `Deshacer` of the most recent undo toast still showing (a delete, import or archive, FR-TX-08, FR-IM-05); with none showing it does nothing. Actions that show no undo toast (a category delete) are not undoable and leave an earlier toast's undo in place |
 
 Focus ring always visible: `ring-[3px] ring-ring/50` (Tailwind `focus-visible:`).
 
@@ -285,7 +285,8 @@ Lists over 50 rows are virtualized (NFR-05).
   because they would need number formatting in TS. Plotted values arrive as Rust-computed
   signed `MoneyDto` plot values (X-17); the UI passes `Number(minor)` to the chart library as
   an opaque coordinate and does nothing else with it.
-- Marks: bars 4px radius on the data end, anchored to the baseline; 2px `card` gap between
+- Marks: bars 4px radius on the data end (single-segment bars; stacked segments are square),
+  anchored to the baseline; 2px `card` gap between
   stacked segments; lines 2px; markers 8px with a 2px `card` ring; gridlines `border`,
   horizontal only, plus at most one 1px dashed `muted-foreground` vertical guide marking the
   focused point. Legend and labels use text tokens (`foreground`, `muted-foreground`), never
@@ -339,9 +340,15 @@ the app's dark mode is `prefers-color-scheme`). Tailwind utilities are `fill-cha
 **What guards it.** `apps/desktop/src/chart-palette.test.ts` fails when a chart token is
 missing in either mode, is not `#rrggbb`, is below 3:1 on `card`/`background`/`popover`, equals
 any status, brand, primary or scope color, is within OKLab ΔE 15 of a status or brand color or
-of another series, is not mapped in `@theme`, or when any chart or surface token is declared
-anywhere but the light `:root` rule and the dark block's `:root` rule (comments ignored), or
-an extra `chart*` token or `@theme` chart color exists. The colorblind (protan/deutan) figures above
+of another series, or is not mapped in `@theme`. It reads `index.css` with a CSS parser and
+also fails when the file's shape lets anything else supply these colors: not exactly one
+top-level light `:root`, one unconditional `@media (prefers-color-scheme: dark)` holding only a
+`:root` rule, and one top-level `@theme inline`; a chart or surface token (`--chart…`, `--card`,
+`--background`, `--popover`, any case) declared anywhere else; a `--color-chart…` or surface
+`--color-*` declared outside `@theme` or mapped to anything but its `var(--…)`; an extra chart
+token; an escaped custom-property name. It guards the tokens, not which utility a component
+paints with: that `body` and `Card` use `bg-background` and `bg-card` is the component's job
+(§7). The colorblind (protan/deutan) figures above
 were measured once with the dataviz palette validator; re-measure and update this table when a
 value changes.
 

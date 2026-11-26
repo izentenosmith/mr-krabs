@@ -68,7 +68,8 @@ nexus if the owner wants it.
   **sign-split stacking** (Recharts `stackOffset="sign"`): positive coordinates stack up from
   zero, negative ones down, so Gastos sits next to the baseline below zero with Ahorro under
   it, and a positive Ahorro (a net withdrawal) stacks above Ingresos instead of overlapping
-  Gastos. **Flujo libre** is a line in `foreground`
+  Gastos. Stacked segments are square (no end radius, an exemption from MASTER §8's 4px), so
+  no sign is read to place a radius; the 2px `card` gap still separates them. **Flujo libre** is a line in `foreground`
   (2px) with 8px dot markers ringed 2px in `card`: a different mark, so it never depends on
   color.
 - **Plot values (X-17):** each month's `plot: CashFlowPlotDto {income, expense, saved,
@@ -81,16 +82,20 @@ nexus if the owner wants it.
   the **shown** month `font-semibold`. No y-axis tick labels (MASTER §8). The zero baseline is
   1px `muted-foreground`.
 - **Focused month vs shown month.** The shown month is the stepper's (bold label). The
-  **focused** month is the keyboard/hover cursor: a 1px dashed vertical guide in
-  `muted-foreground` through its band (MASTER §8's one guide) plus the tooltip. No fill is
-  drawn behind marks.
+  **focused** month is the keyboard cursor. The guide (a 1px dashed vertical line in
+  `muted-foreground` through the band, MASTER §8's one guide) and the tooltip are drawn on one
+  band: the hovered band while the pointer is over the plot, else the focused month while the
+  plot has focus, else none. No fill is drawn behind marks.
 - **Keyboard and screen reader:** the plot is `role="group"` with `aria-roledescription` and
   `aria-label` from the i18n catalogue (es-CL "gráfico"), one tab stop (`tabindex="0"`, focus
   ring). On focus the focused month is the shown month. ← → move the focused month,
   Home/End (⌘←/⌘→) jump to the ends, Esc hides the tooltip. Enter makes the focused month the
   shown month (as the stepper would): the card keeps the previous data on screen while the new
   window loads (no "Cargando…" swap), focus stays on the plot, and the focused month stays the
-  same month (now the last band). A visually hidden `aria-live="polite"` region announces the
+  same month (now the last band). The tiles keep their values with `aria-busy` meanwhile.
+  If the new window fails (`ErrorAlert` or the Hourglass block replaces the plot), focus moves
+  to the card's "Reintentar" button, or for `NOT_IMPLEMENTED` to the stepper. A stepper change
+  shows "Cargando…" as usual (focus is not in the plot). A visually hidden `aria-live="polite"` region announces the
   tooltip's text on every keyboard move (the stepper's live region stays silent for this
   change). The `aria-label` describes the shown month: "Flujo de caja de
   {mes inicial} a {mes final}. {mes}: ingresos {x}, gastos {y}, ahorro e inversión {z}, flujo
