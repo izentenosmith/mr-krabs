@@ -482,11 +482,24 @@ fn req18_archive_hides_the_subtree_and_unarchive_restores_it() {
     for id in [&food, &sup, &organic, &delivery] {
         assert!(env.node(id).is_archived, "{id}");
     }
+    // Derived at read time (X-19): only the group's own flag is stored.
+    assert_eq!(
+        env.int(&format!(
+            "SELECT count(*) FROM category WHERE is_archived = 1 AND id IN ('{sup}', '{organic}')"
+        )),
+        0
+    );
     // Idempotent: nothing logged.
     env.app.category_archive(&food, true).unwrap();
     assert_eq!(env.log_count(), before + 1);
 
     env.app.category_archive(&food, false).unwrap();
+    // Unarchiving restores the subtree with one write: the group's own row.
+    assert_eq!(env.log_count(), before + 2, "no write per child");
+    assert_eq!(
+        env.category_log(&food).last().unwrap().1["is_archived"]["new"],
+        0
+    );
     assert!(!env.node(&food).is_archived);
     assert!(!env.node(&organic).is_archived);
     assert!(env.node(&delivery).is_archived, "archived on its own");
@@ -581,7 +594,7 @@ fn req19_delete_unused_and_used_needs_a_merge_target() {
         &e,
         ErrorCode::Validation,
         "mergeIntoId",
-        "errors.field.required",
+        "errors.field.mergeRequired",
     );
     let e = env
         .app

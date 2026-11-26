@@ -196,7 +196,7 @@ impl App {
                     return Err(field_error(
                         ErrorCode::Validation,
                         "mergeIntoId",
-                        "required",
+                        "mergeRequired",
                         "the category has transactions, budgets or sub-categories: choose a category to merge it into",
                     ));
                 }
