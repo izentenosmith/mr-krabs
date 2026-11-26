@@ -373,7 +373,9 @@ pub struct CategoryUpdateInput {
 }
 
 /// `category_move`: reparent (`parentId` omitted or `null` = root) and place at `index`
-/// (0-based) among the new siblings. Cycles and a different kind are `VALIDATION`.
+/// (0-based) among the new siblings. At the root, `index` counts only the roots of the
+/// category's own kind (X-20); the other kind's roots are neither counted nor renumbered.
+/// Cycles and a different kind are `VALIDATION`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct CategoryMoveInput {

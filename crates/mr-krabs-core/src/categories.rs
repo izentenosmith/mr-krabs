@@ -4,11 +4,12 @@
 //! transaction logged through the change log (ADR-0010). Seeded rows are edited like any
 //! other (ADR-0008).
 
+use std::borrow::Borrow;
 use std::collections::{BTreeMap, HashMap};
 
 use mrk_domain::{
     BudgetLineRow, CategoryError, CategoryNode, lineage, move_position, normalize_name, plan_merge,
-    tree_parents, validate_parent,
+    sibling_key, tree_parents, validate_parent,
 };
 use mrk_money::Money;
 use mrk_store::{CategoryMergeWrite, CategoryRow};
@@ -41,11 +42,11 @@ impl App {
             let kind = query.kind.map(wire);
             let all = self.store.category_rows()?;
             let parents = tree_parents(&nodes_of(&all)?);
-            let mut rows: Vec<CategoryRow> = all
-                .into_iter()
-                .filter(|r| !r.deleted && kind.as_ref().is_none_or(|k| *k == r.kind))
-                .collect();
-            rows.sort_by(tree_order);
+            let rows = in_tree_order(
+                all.into_iter()
+                    .filter(|r| !r.deleted && kind.as_ref().is_none_or(|k| *k == r.kind))
+                    .collect(),
+            )?;
             let mut children: BTreeMap<Option<String>, Vec<CategoryRow>> = BTreeMap::new();
             for r in rows {
                 let parent = parents.get(&r.id).cloned().flatten();
@@ -133,8 +134,7 @@ impl App {
             check_parent(&rows, id, &row.kind, parent_id)?;
             row.parent_id = parent_id.map(str::to_owned);
             check_unique_name(&rows, &row)?;
-            let mut siblings: Vec<&CategoryRow> = live_siblings(&rows, &row).collect();
-            siblings.sort_by(|a, b| tree_order(a, b));
+            let siblings = in_tree_order(live_siblings(&rows, &row).collect())?;
             let ids: Vec<String> = siblings.iter().map(|s| s.id.clone()).collect();
             let order = move_position(&ids, id, index)
                 .map_err(|e| field_error(ErrorCode::Validation, "index", "outOfRange", e))?;
@@ -299,18 +299,26 @@ fn archived_in_effect(
         .any(|c| archived.get(c).copied().unwrap_or(false))
 }
 
-/// Siblings in tree order, `mrk_domain::sibling_key` on stored rows: kind (income first),
-/// sort order, normalized name (`name_key`), id.
-fn tree_order(a: &CategoryRow, b: &CategoryRow) -> std::cmp::Ordering {
-    let key = |r: &CategoryRow| {
-        (
-            r.kind != "income",
-            r.sort_order,
-            r.name_key.clone(),
-            r.id.clone(),
-        )
-    };
-    key(a).cmp(&key(b))
+/// `rows` sorted as siblings are shown: by `mrk_domain::sibling_key` (X-16).
+fn in_tree_order<T: Borrow<CategoryRow>>(rows: Vec<T>) -> Result<Vec<T>, ApiError> {
+    let mut keyed = rows
+        .into_iter()
+        .map(|t| {
+            let r = t.borrow();
+            let node = CategoryNode {
+                id: r.id.clone(),
+                parent_id: None,
+                kind: domain_kind(&r.kind)?,
+                live: true,
+                sort_order: r.sort_order,
+                name: r.name.clone(),
+            };
+            let (kind, order, name, id) = sibling_key(&node);
+            Ok(((kind, order, name, id.to_owned()), t))
+        })
+        .collect::<Result<Vec<_>, ApiError>>()?;
+    keyed.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(keyed.into_iter().map(|(_, t)| t).collect())
 }
 
 /// A live (not deleted) category, or `NOT_FOUND` (any id, as M1's `category_delete`).

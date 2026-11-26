@@ -782,3 +782,40 @@ fn k1_wire_inputs_accept_omitted_optional_fields_and_refuse_a_negative_index() {
     assert_eq!(e.code, ErrorCode::Validation);
     assert_eq!(env.log_count(), before);
 }
+
+/// X-20: with no `parentId`, `index` counts the roots of the category's own kind only; the
+/// income roots are not counted and not renumbered.
+#[test]
+fn req17_x20_move_to_the_root_counts_index_among_roots_of_its_own_kind() {
+    let mut env = Env::new("x20");
+    let roots = |env: &Env, kind: CategoryKind| -> Vec<(String, i32)> {
+        env.tree()
+            .into_iter()
+            .filter(|n| n.kind == kind)
+            .map(|n| (n.id, n.sort_order))
+            .collect()
+    };
+    let income_before = roots(&env, CategoryKind::Income);
+    let expense_roots = roots(&env, CategoryKind::Expense).len();
+    assert!(!income_before.is_empty());
+    let sup = seed_id("expense.food.supermarket");
+
+    env.app.cat_move(&sup, None, 0).unwrap();
+    let expense = roots(&env, CategoryKind::Expense);
+    assert_eq!(expense[0].0, sup);
+    assert_eq!(expense.len(), expense_roots + 1);
+    assert_eq!(roots(&env, CategoryKind::Income), income_before);
+
+    // The last own-kind slot is accepted; one past it is out of range, though the root
+    // holds more categories once income is counted.
+    env.app.cat_move(&sup, None, expense_roots).unwrap();
+    assert_eq!(roots(&env, CategoryKind::Expense).last().unwrap().0, sup);
+    let e = env.app.cat_move(&sup, None, expense_roots + 1).unwrap_err();
+    field(
+        &e,
+        ErrorCode::Validation,
+        "index",
+        "errors.field.outOfRange",
+    );
+    assert_eq!(roots(&env, CategoryKind::Income), income_before);
+}

@@ -215,8 +215,9 @@ pub fn validate_kind_change(
     }
 }
 
-/// The parent each live category is shown under (M1 #29 F3): its own parent when that is live,
-/// otherwise none (a root). A parent cycle, which only sync can create, is cut at its
+/// The parent each live category is shown under (M1 #29 F3, X-16): its own parent when that is
+/// live and of the same kind, otherwise none (a root). The one copy of this rule: the
+/// `category_tree` command and the reports' `CategoryTree` both place categories with it. A parent cycle, which only sync can create, is cut at its
 /// smallest member by [`sibling_key`], which becomes a root; so every live category appears
 /// exactly once, whatever order the rows come in, and every walk up the result ends.
 pub fn tree_parents(nodes: &[CategoryNode]) -> BTreeMap<String, Option<String>> {
@@ -232,7 +233,7 @@ pub fn tree_parents(nodes: &[CategoryNode]) -> BTreeMap<String, Option<String>> 
             let p = n
                 .parent_id
                 .clone()
-                .filter(|p| by_id.contains_key(p.as_str()));
+                .filter(|p| by_id.get(p.as_str()).is_some_and(|q| q.kind == n.kind));
             (n.id.clone(), p)
         })
         .collect();
