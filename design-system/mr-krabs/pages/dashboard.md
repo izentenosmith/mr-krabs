@@ -2,7 +2,7 @@
 
 Overrides and extends [MASTER.md](../MASTER.md) for the dashboard (FR-RP-02, FR-RP-03; DEC-29
 Q6–Q8). Data: `report_cash_flow` → `CashFlowDto` (monthly) and `report_spending` →
-`BreakdownDto` (C0, with X-17's `PercentDto` and plot values; exact names as #37 merges them).
+`BreakdownDto` (C0 contract as of #37 `69f7842`).
 Charts follow MASTER §8 and §8.1; rules marked **(shared)** are budget.md's report-grid rules.
 
 ## Layout
@@ -53,7 +53,7 @@ The caption names the kind, so tiles follow MASTER §2's "Report grids" rule: no
 |---|---|---|
 | Ingresos | `income` | — |
 | Gastos | `expense` | — |
-| Ahorro e inversión | `saved` | second line `text-xs text-muted-foreground` "{tasa} de los ingresos" with the savings rate's `PercentDto.display`, or "—" when it is `null` (no income) |
+| Ahorro e inversión | `saved` | second line `text-xs text-muted-foreground` "{tasa} de los ingresos" with `savingsRate.display` (a `PercentDto`), or "—" when `savingsRate` is `null` (no income) |
 | Flujo libre | `freeCashFlow` | negative `minor`: `destructive` + `CircleAlert` + visible "déficit" |
 
 Percentages arrive as `PercentDto {bp, display}` formatted in Rust (X-17); the UI shows
@@ -68,10 +68,11 @@ nexus if the owner wants it.
   stacked below zero, Gastos next to the baseline. **Flujo libre** is a line in `foreground`
   (2px) with 8px dot markers ringed 2px in `card`: a different mark, so it never depends on
   color.
-- **Plot values (X-17):** each series point carries a Rust-computed signed plot value as a
-  `MoneyDto` (outflows negative, so a net withdrawal from savings rises above zero as money
-  coming in). The UI passes `Number(plot.minor)` to the chart library as an opaque coordinate
-  and does nothing else with it; every number a person reads is a `display`.
+- **Plot values (X-17):** each month's `plot: CashFlowPlotDto {income, expense, saved,
+  freeCashFlow}` carries Rust-computed signed coordinates (inflows positive, outflows
+  negative, so a net withdrawal from savings rises above zero as money coming in). The UI
+  passes `Number(plot.<series>.minor)` to the chart library as an opaque coordinate and does
+  nothing else with it; every number a person reads is the month's display amounts.
 - **Marks:** MASTER §8; bar width 60% of the band.
 - **Axes:** x = short month names from the i18n catalogue (`text-xs text-muted-foreground`),
   the **shown** month `font-semibold`. No y-axis tick labels (MASTER §8). The zero baseline is
@@ -109,11 +110,11 @@ nexus if the owner wants it.
     its content is a link (shared drill-down, `month`) whose text is the group name and whose
     accessible name adds ", ver gastos de {mes}".
   - **Monto:** the bar, then `amount.display` (right-aligned, `tabular-nums`).
-  - **Porcentaje:** the share's `PercentDto.display`, or "—" when `null`
+  - **Porcentaje:** `share.display` (a `PercentDto`), or "—" when `share` is `null`
     (`text-muted-foreground`).
 - **The bar** (decorative, `aria-hidden`) is `chart-2` (the "Gastos" color, so color follows the
   entity across the page), 12px tall, 4px radius at its end, no track, in a fixed-width track
-  area at the start of the Monto cell. Its length is the share's `bp` set as a CSS variable:
+  area at the start of the Monto cell. Its length is `share.bp` set as a CSS variable:
   `width: min(calc(var(--share-bp, 0) * 0.01%), 100%)`. CSS draws it; TS does no arithmetic.
   A `null` share or a negative amount (a credit, shared) renders **no bar element**.
 

@@ -2,8 +2,7 @@
 
 Overrides and extends [MASTER.md](../MASTER.md) for the budget page (FR-BU-02, FR-BU-03,
 FR-BU-08, FR-RP-07; DEC-29, DEC-30). Data: `budget_matrix` → `BudgetMatrixDto`, `budget_set`,
-`budget_copy_month` (C0 contract, `packages/api-client/src/bindings.ts`, with X-17's additions;
-exact field names as #37 merges them). Everything not stated here follows MASTER.
+`budget_copy_month` (C0 contract, `packages/api-client/src/bindings.ts` as of #37 `69f7842`). Everything not stated here follows MASTER.
 
 Sections marked **(shared)** are the report-grid rules that `calendar.md`, `dashboard.md` and
 `categories.md` reuse; a page that departs from one says so.
@@ -121,9 +120,9 @@ or `destructive`: M4 converts them.
 
 ## The matrix
 
-- **Summary rows** after a 2px `border-t`, from `BudgetMatrixDto.summary`: "Total ingresos"
-  (`income`), "Total gastos" (`expense`; X-17 drops the separate total-expenses field),
-  "Ahorro e inversión" (`saved`) and "Flujo libre" (`freeCashFlow`). `font-medium`, read-only,
+- **Summary rows** after a 2px `border-t`, from `BudgetMatrixDto.summary` (each a `BudgetSummaryRowDto {months, year}`):
+  "Total ingresos" (`income`), "Total gastos" (`expense`; there is no separate total-expenses
+  field), "Ahorro e inversión" (`saved`) and "Flujo libre" (`freeCashFlow`). `font-medium`, read-only,
   no drill-down. Budgets are per category (DEC-30 Q9), so "Ahorro e inversión" and "Flujo
   libre" have no plan: their Planificado and Diferencia cells show "—" in `muted-foreground`
   with a visually hidden "Sin presupuesto". A negative "Flujo libre" actual uses `destructive`
@@ -132,14 +131,14 @@ or `destructive`: M4 converts them.
 ### Month mode ("Mes", default)
 
 Columns: Categoría · Planificado · Real · Diferencia (136px each; Real grows to fit
-"crédito"), from `rows[i].months[m]` (`planned`, `actual`, `diff`) for the shown month. The
+"crédito"), from `rows[i].months[m]` (`planned`, `actual`, `diff`) for the shown month (summary rows: `summary.<row>.months[m]`). The
 stepper steps months; default the current month. Real cells drill down (`month`).
 
 ### Year mode ("Año")
 
 - Columns: Categoría · Ene … Dic · Total — **actuals only** (DEC-30 Q11), 112px per month,
   Total 128px `font-medium`. Short month names from the i18n catalogue, with the full name as
-  the column header's `aria-label`. Total is the row's `year` cell actual from Rust (X-17);
+  the column header's `aria-label`. Total is `rows[i].year.actual` (summary rows: `summary.<row>.year.actual`), from Rust (X-17);
   the UI never adds months.
 - The stepper steps years and keeps the shared month (MASTER §5.4): the year shown is that
   month's year.

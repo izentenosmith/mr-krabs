@@ -99,14 +99,16 @@ in history and reports. "Desarchivar" restores without a toast.
 
 "Eliminar…" opens a `Dialog`:
 - Title "Eliminar «{name}»"; body "Todo lo que usa esta categoría (subcategorías, movimientos,
-  presupuestos y otras referencias) pasará a la categoría que elijas. No se puede deshacer."
+  también los eliminados que aún se pueden restaurar, presupuestos y otras referencias) pasará a
+  la categoría que elijas. No se puede deshacer." Deleted transactions count as uses so they stay
+  restorable (X-18).
 - **Mover a** — searchable `Select` of the kind's live categories, excluding the category and
   its descendants (DEC-30 Q10). It may be left empty when the category is unused.
 - Footer: "Cancelar" (outline, default focus) and "Eliminar" (`destructive` variant):
   `category_delete {id, mergeIntoId?}`.
 - When Rust answers `VALIDATION` because the category is in use — whether `fields` names
   `mergeIntoId` or carries no field — the message shows under Mover a: "Esta categoría está en
-  uso: elige dónde mover lo que la usa." (cross-slice ask to C0/K1: attach the error to
+  uso (puede ser por movimientos eliminados): elige dónde mover lo que la usa." (cross-slice ask to C0/K1: attach the error to
   `mergeIntoId`).
 - On success: the dialog closes, the tree refetches, focus moves to the previous row (else the
   next, else the "Nueva categoría" button), and a Sonner default toast "Categoría eliminada"
