@@ -751,3 +751,34 @@ fn category_tree_orders_siblings_by_kind_sort_order_then_normalized_name() {
     ));
     assert_eq!(env.child_ids(&parent), [alamo, zeta]);
 }
+
+/// The wiring onto C0's inputs: omitted optional fields mean `None` (root, no icon, keep the
+/// name), and an index that is not a `u32` is a malformed argument, writing nothing.
+#[test]
+fn k1_wire_inputs_accept_omitted_optional_fields_and_refuse_a_negative_index() {
+    let mut env = Env::new("wire");
+    let made = env.ok(
+        "category_create",
+        json!({ "input": { "kind": "expense", "name": "Mascotas" } }),
+    );
+    let id = made["id"].as_str().unwrap().to_owned();
+    assert_eq!(made["parentId"], Value::Null);
+    assert_eq!(made["icon"], Value::Null);
+    let kept = env.ok(
+        "category_update",
+        json!({ "input": { "id": id, "icon": "paw" } }),
+    );
+    assert_eq!(
+        (kept["name"].as_str(), kept["icon"].as_str()),
+        (Some("Mascotas"), Some("paw"))
+    );
+    let before = env.log_count();
+    let e = env
+        .call(
+            "category_move",
+            json!({ "input": { "id": id, "index": -1 } }),
+        )
+        .unwrap_err();
+    assert_eq!(e.code, ErrorCode::Validation);
+    assert_eq!(env.log_count(), before);
+}
