@@ -1,6 +1,17 @@
 //! Reports (M2, DEC-29/DEC-30): pure functions over rows the store loads with plain
 //! `SELECT … WHERE` queries. Money is never aggregated in SQL (ADR-0003); every total here is
 //! computed in the household's base currency with checked arithmetic.
+//!
+//! **Rows left out** (none of which the store can hold; they are skipped, never a panic):
+//! a posting whose `entry_date` is not a civil date; a category leg on a category that is not
+//! among the live rows; an account leg on an account that is not among the rows (so an entry
+//! with no known account is in no view); a budget line whose period is not `YYYY-MM` or whose
+//! category is not among the live rows. Money in another currency is not dropped silently: it
+//! is counted per currency in each report's `excluded`.
+//!
+//! **Basis points are rounded once, here** (X-18): the savings rate half away from zero from
+//! the exact quotient; spending shares by one largest-remainder split per level, so they sum
+//! exactly. Downstream formats them and never rounds again.
 
 use std::collections::BTreeMap;
 
