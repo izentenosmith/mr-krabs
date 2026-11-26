@@ -17,8 +17,7 @@ const WHOLE_BP: u32 = 10_000;
 
 /// Spending over the civil dates `from`–`to` (inclusive) for `viewer`: one row per expense
 /// category, depth-first with siblings largest amount first (ties in tree order), with its
-/// rolled-up net actual and its share of total spending in
-/// basis points.
+/// rolled-up net actual and its share of total spending in basis points.
 ///
 /// Shares are split top-down with the largest-remainder rule, so they are exact: the roots'
 /// shares sum to 10 000, and a group's own share plus its children's equal its share. A

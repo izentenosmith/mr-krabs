@@ -15,8 +15,8 @@ use crate::category::CategoryKind;
 /// The year's matrix for `viewer`: one row per category in tree order with twelve monthly
 /// cells (planned and actual rolled up through the tree, diff = planned − actual) and a year
 /// total, plus the monthly income, expense, saved and free cash flow and their year total
-/// (X-17; the "total expenses" line is `year_total.expense.actual` / each month's `expense.actual`). Actuals are attributed
-/// to the entry date (DEC-29 Q6). Year 1970–9999, else `InvalidYear`.
+/// (X-17). The "total expenses" line is `expense.actual` of a month or of `year_total`.
+/// Actuals are attributed to the entry date (DEC-29 Q6). Year 1970–9999, else `InvalidYear`.
 pub fn budget_matrix(
     data: &ReportData,
     viewer: &Viewer,

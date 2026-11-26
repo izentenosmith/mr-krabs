@@ -834,6 +834,9 @@ proptest! {
         let s = spending(&data, &viewer(View::Combined), "2026-01-01", "2026-12-31").unwrap();
         check_shares(&s)?;
         check_largest_first(&s)?;
+        let mut ids: Vec<&str> = s.rows.iter().map(|r| r.category.id.as_str()).collect();
+        ids.sort_unstable();
+        prop_assert_eq!(ids, ["delivery", "food", "housing", "organic", "super"]);
         prop_assert!(s.rows.iter().all(|r| r.category.kind == CategoryKind::Expense));
         let roots: i64 = s.rows.iter().filter(|r| r.category.depth == 0).map(|r| r.amount.minor).sum();
         prop_assert_eq!(roots, s.total.minor);
@@ -1401,4 +1404,154 @@ fn ranges_before_1970_are_refused() {
         );
     }
     assert!(cash_flow(&b.data, &v, "1970-01-01", "1970-01-01").is_ok());
+}
+
+// ───────────────────────── remediation slices (tyr-verdict, iteration 2) ─────────────────────────
+
+/// F20: a transfer touching a saving account in another currency, in any scope, is left out of
+/// saved in every view, so the views still add up.
+#[test]
+fn a_foreign_saving_leg_in_any_scope_leaves_saved_out_in_every_view() {
+    let mut b = book();
+    b.data.accounts.push(ReportAccount {
+        id: "myusd".into(),
+        kind: AccountKind::Savings,
+        scope: personal(ME),
+    });
+    b.entry(
+        "2026-01-05",
+        false,
+        vec![
+            (Leg::Account("sav".into()), clp(-1_000_000)),
+            (Leg::FxTrading, clp(1_000_000)),
+            (Leg::FxTrading, usd(-1_000)),
+            (Leg::Account("myusd".into()), usd(1_000)),
+        ],
+    );
+    for view in [View::Household, View::Personal, View::Combined] {
+        let cf = cash_flow(&b.data, &viewer(view), "2026-01-01", "2026-01-31").unwrap();
+        assert_eq!(cf.total.saved, clp(0), "{view:?}");
+        assert_eq!(
+            cf.excluded,
+            [Excluded {
+                currency: USD,
+                count: 1
+            }],
+            "{view:?}"
+        );
+    }
+}
+
+/// F21: a left-out transfer is counted once under each foreign currency of its saving legs,
+/// whatever the posting order.
+#[test]
+fn a_left_out_transfer_counts_each_foreign_currency_in_any_order() {
+    let mut b = book();
+    for (id, kind) in [
+        ("usav", AccountKind::Savings),
+        ("esav", AccountKind::Investment),
+    ] {
+        b.data.accounts.push(ReportAccount {
+            id: id.into(),
+            kind,
+            scope: Scope::Household,
+        });
+    }
+    let eur = |v| Money::new(v, EUR);
+    b.entry(
+        "2026-01-05",
+        false,
+        vec![
+            (Leg::Account("usav".into()), usd(-100)),
+            (Leg::FxTrading, usd(100)),
+            (Leg::FxTrading, eur(-90)),
+            (Leg::Account("esav".into()), eur(90)),
+        ],
+    );
+    let want = [
+        Excluded {
+            currency: EUR,
+            count: 1,
+        },
+        Excluded {
+            currency: USD,
+            count: 1,
+        },
+    ];
+    let v = viewer(View::Household);
+    assert_eq!(
+        cash_flow(&b.data, &v, "2026-01-01", "2026-01-31")
+            .unwrap()
+            .excluded,
+        want
+    );
+    b.data.postings.reverse();
+    assert_eq!(
+        cash_flow(&b.data, &v, "2026-01-01", "2026-01-31")
+            .unwrap()
+            .excluded,
+        want
+    );
+}
+
+/// F22: the 1970 floor holds on `to` too, and the floor itself is accepted by both reports.
+#[test]
+fn a_to_date_before_1970_is_refused() {
+    let b = book();
+    let v = viewer(View::Household);
+    let bad = Err(ReportError::InvalidDate("1969-12-31".into()));
+    assert_eq!(
+        cash_flow(&b.data, &v, "1970-01-01", "1969-12-31").map(|_| ()),
+        bad
+    );
+    assert_eq!(
+        spending(&b.data, &v, "1970-01-01", "1969-12-31").map(|_| ()),
+        bad
+    );
+    assert!(spending(&b.data, &v, "1970-01-01", "1970-01-01").is_ok());
+}
+
+/// F23: equal amounts keep sort order, then name, even when ids sort the other way.
+#[test]
+fn equal_amounts_keep_sort_order_then_name() {
+    let mut b = book();
+    b.data.categories.extend([
+        cat("zz", None, CategoryKind::Expense, 9, "Alfa"),
+        cat("aa", None, CategoryKind::Expense, 9, "Beta"),
+    ]);
+    // super (sort 1) and delivery (sort 2) tie inside food; ids sort delivery first.
+    b.expense("2026-06-01", "chk", "super", clp(1_000))
+        .expense("2026-06-02", "chk", "delivery", clp(1_000))
+        .expense("2026-06-03", "chk", "zz", clp(2_000))
+        .expense("2026-06-04", "chk", "aa", clp(2_000));
+    let s = spending(
+        &b.data,
+        &viewer(View::Household),
+        "2026-06-01",
+        "2026-06-30",
+    )
+    .unwrap();
+    let order: Vec<&str> = s.rows.iter().map(|r| r.category.id.as_str()).collect();
+    assert_eq!(
+        order,
+        [
+            "food", "super", "organic", "delivery", "zz", "aa", "housing"
+        ]
+    );
+}
+
+/// F28: the matrix year total is in the data's base currency.
+#[test]
+fn the_year_total_is_in_the_base_currency() {
+    let mut b = book();
+    b.data.base = USD;
+    b.expense("2026-02-01", "chk", "super", usd(250));
+    let t = budget_matrix(&b.data, &viewer(View::Household), 2026)
+        .unwrap()
+        .year_total;
+    assert_eq!(t.expense.actual, usd(250));
+    assert_eq!(
+        (t.income.planned, t.saved, t.free_cash_flow),
+        (usd(0), usd(0), usd(-250))
+    );
 }

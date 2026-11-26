@@ -105,25 +105,38 @@ pub(crate) fn flows<'a>(
         let transfer = !legs.iter().any(|p| matches!(p.leg, Leg::Category(_)));
         if transfer {
             // Saved = the net of the in-view saving-account legs of a transfer: into savings
-            // is +, out is −, savings ↔ savings nets to 0, a card payment has none. A saving
-            // leg in another currency leaves the transfer's saved out as a whole (never
-            // half-counted, F2) and its entry is counted in `excluded`.
-            let is_saving = |p: &&&ReportPosting| match &p.leg {
-                Leg::Account(id) => account_in_view(id).is_some_and(|a| a.kind.is_saving()),
+            // is +, out is −, savings ↔ savings nets to 0, a card payment has none. A transfer
+            // with a saving leg in another currency, in any scope, is left out of saved in
+            // every view (never half-counted, so views still add up: F2, F20); a view that
+            // sees one of its saving legs counts it once per foreign currency (F21).
+            let saving_leg = |p: &ReportPosting, in_view: bool| match &p.leg {
+                Leg::Account(id) if in_view => {
+                    account_in_view(id).is_some_and(|a| a.kind.is_saving())
+                }
+                Leg::Account(id) => accounts
+                    .get(id.as_str())
+                    .is_some_and(|a| a.kind.is_saving()),
                 _ => false,
             };
-            let saving: Vec<&&ReportPosting> = legs.iter().filter(is_saving).collect();
-            if let Some(p) = saving.iter().find(|p| p.amount.currency != data.base) {
-                out.left_out.push(LeftOut {
-                    entry_id: &p.entry_id,
-                    currency: p.amount.currency,
-                    counts: Counts::Saved,
-                });
-            } else {
+            let foreign: BTreeSet<CurrencyCode> = legs
+                .iter()
+                .filter(|p| p.amount.currency != data.base && saving_leg(p, false))
+                .map(|p| p.amount.currency)
+                .collect();
+            let saving: Vec<&&ReportPosting> =
+                legs.iter().filter(|p| saving_leg(p, true)).collect();
+            if foreign.is_empty() {
                 out.saved.extend(saving.iter().map(|p| SavedFlow {
                     month: Month::of_date(&p.entry_date),
                     amount: p.amount,
                 }));
+            } else if let Some(p) = saving.first() {
+                out.left_out
+                    .extend(foreign.into_iter().map(|currency| LeftOut {
+                        entry_id: &p.entry_id,
+                        currency,
+                        counts: Counts::Saved,
+                    }));
             }
             continue;
         }
