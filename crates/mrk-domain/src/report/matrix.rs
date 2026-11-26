@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use mrk_money::Money;
+use mrk_money::{CurrencyCode, Money};
 
 use super::flows::flows;
 use super::period::{DateRange, Month, year_months};
@@ -103,21 +103,7 @@ pub fn budget_matrix(
         });
     }
 
-    let zero = Money::zero(base);
-    let mut year_total = MatrixTotal {
-        income: Cell::zero(base),
-        expense: Cell::zero(base),
-        saved: zero,
-        free_cash_flow: zero,
-    };
-    for m in &summary {
-        year_total = MatrixTotal {
-            income: year_total.income.checked_add(&m.income)?,
-            expense: year_total.expense.checked_add(&m.expense)?,
-            saved: year_total.saved.checked_add(m.saved)?,
-            free_cash_flow: year_total.free_cash_flow.checked_add(m.free_cash_flow)?,
-        };
-    }
+    let year_total = year_total(&summary, base)?;
 
     Ok(BudgetMatrix {
         year,
@@ -130,4 +116,24 @@ pub fn budget_matrix(
 
 fn month_index(m: Month) -> usize {
     (m.month - 1) as usize
+}
+
+/// The summary's year total (X-17): the twelve months added up, checked.
+fn year_total(months: &[MatrixMonth], base: CurrencyCode) -> Result<MatrixTotal, ReportError> {
+    let zero = Money::zero(base);
+    let mut t = MatrixTotal {
+        income: Cell::zero(base),
+        expense: Cell::zero(base),
+        saved: zero,
+        free_cash_flow: zero,
+    };
+    for m in months {
+        t = MatrixTotal {
+            income: t.income.checked_add(&m.income)?,
+            expense: t.expense.checked_add(&m.expense)?,
+            saved: t.saved.checked_add(m.saved)?,
+            free_cash_flow: t.free_cash_flow.checked_add(m.free_cash_flow)?,
+        };
+    }
+    Ok(t)
 }
